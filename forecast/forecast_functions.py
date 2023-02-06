@@ -4,7 +4,7 @@ import pandas as pd
 from scipy.stats import norm, multivariate_normal
 
 
-class Forecast_func:
+class Forecast:
     def __init__(self, n_build):
         self.num_buildings = n_build
         self.pv_capacity = [4.0, 4.0, 4.0, 5.0, 4.0]
@@ -12,7 +12,7 @@ class Forecast_func:
         self.prev_steps = {}
         self.model_dict = {}
         for qt in self.quantiles:
-            self.model_dict[qt] = joblib.load("models/lgb_{}.pkl".format(qt))
+            self.model_dict[qt] = joblib.load("models/lag_minus_1/lgb_{}.pkl".format(qt))
         self.renamer = {"Month": "month", "Hour": "hour"}
 
         # start dicts for min and max values for each building
@@ -202,22 +202,103 @@ class Forecast_func:
             forec = [i[0] for i in forec]
             return forec
 
-    def estimate_pdf(self, row):
-        qts_temp = {}
-        for i, qt in enumerate(qts):
-            # load lgb model 
-            model = models[i]
-            # predict the quantile
-            qts_temp['{}'.format(qt)] = model.predict(row[features].values.reshape(1,-1)).item(0)
-            # 
-        qts_temp = pd.Series(data = list(qts_temp.values()), index = qts.round(3))
-        mu, std = norm.fit(qts_temp)
-        pdf = norm(mu, std)
-        return pdf, qts_temp
-
-    def make_scenario(self, horizon, n_scenarios=5):
-        # make a scenario for the next 24 hours
-        # make a vector of 5 for forecast
-        scen = np.zeros((self.num_buildings, n_scenarios, horizon))
-        init_qts = self.get_forecast_step(0)
-        for step in range(horizon):
+    def forecast_next_step_for_B(self, id: int, last_param=False, step=1):
+        # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
+        #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
+        #   'relative_humidity+1', 'drybulb_temp+1']
+        columnames = self.model_dict.values()[0].feature_name()
+        # rename items in the list according to a dict
+        X_order = [self.renamer.get(x, x) for x in columnames]
+        # make a vector of last values from prev steps using keys from X_order
+        X = np.zeros(len(X_order))
+        # create a vector of 5 for forecast
+        forec = np.zeros(len(self.quantiles))
+        for qt_cnt, qt in enumerate(self.quantiles):
+            for i, key in enumerate(X_order):
+                # if key starts with net_target
+                if key == "net_target-1":
+                    if last_param == False:
+                        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+                            self.prev_steps[f"solar_generation_{id}"][-1]
+                        )
+                    else:
+                        last_val = last_param
+                    self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
+                    self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
+                    norm_val = self.min_max_normalize(
+                        last_val, self.net_min_dict[id], self.net_max_dict[id]
+                    )
+                    X[i] = norm_val
+                elif key == "net_target-23":
+                    lag_step = 24 - step
+                    if self.time_step > lag_step:
+                        lag_step = -lag_step - 1
+                        last_val = self.prev_steps[f"non_shiftable_load_{j}"][
+                            lag_step
+                        ] - (self.prev_steps[f"solar_generation_{j}"][lag_step])
+                        norm_val = self.min_max_normalize(
+                            last_val, self.net_min_dict[j], self.net_max_dict[j]
+                        )
+                    else:
+                        norm_val = np.nan
+                    X[i] = norm_val
+                elif key.startswith("diffuse_solar_radiation+"):
+                    step_back = -(25 - step)
+                    if self.time_step > 23 or self.time_step == 0:
+                        last_val = self.prev_steps[
+                            "diffuse_solar_irradiance_predicted_24h"
+                        ][step_back]
+                    else:
+                        last_val = np.nan
+                    X[i] = np.log1p(last_val)
+                elif key.startswith("direct_solar_radiation+"):
+                    step_back = -(25 - step)
+                    if self.time_step > 23 or self.time_step == 0:
+                        last_val = self.prev_steps[
+                            "direct_solar_irradiance_predicted_24h"
+                        ][step_back]
+                    else:
+                        last_val = np.nan
+                    X[i] = np.log1p(last_val)
+                elif key.startswith("relative_humidity+"):
+                    step_back = -(25 - step)
+                    if self.time_step > 23 or self.time_step == 0:
+                        last_val = self.prev_steps[
+                            "outdoor_relative_humidity_predicted_24h"
+                        ][step_back]
+                    else:
+                        last_val = np.nan
+                    X[i] = last_val
+                elif key.startswith("drybulb_temp+"):
+                    step_back = -(25 - step)
+                    if self.time_step > 23 or self.time_step == 0:
+                        last_val = self.prev_steps[
+                            "outdoor_dry_bulb_temperature_predicted_24h"
+                        ][step_back]
+                    else:
+                        last_val = np.nan
+                    X[i] = last_val
+                elif key == "hour":
+                    X[i] = (self.prev_steps["hour"][-1] + step) % 24
+                elif key == "hour_x":
+                    X[i] = np.cos(
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
+                    )
+                elif key == "hour_y":
+                    X[i] = np.sin(
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
+                    )
+                elif key == "month_x":
+                    X[i] = np.cos(2 * np.pi * self.prev_steps["month"][-1] / 12)
+                elif key == "month_y":
+                    X[i] = np.sin(2 * np.pi * self.prev_steps["month"][-1] / 12)
+                elif key in self.prev_steps.keys():
+                    X[i] = self.prev_steps[key][-1]
+            # add a value to a prediction vector
+            forec[qt_cnt] = self.model_dict[qt].predict(X.reshape(1, -1))
+            # denormalize the values
+            forec[qt_cnt] = self.min_max_denormalize(
+                forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
+            )
+            forec = [i[0] for i in forec]
+            return forec
