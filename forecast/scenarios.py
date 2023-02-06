@@ -41,6 +41,8 @@ class Scenario_Generator:
             print('All scenarios generated')
         elif type == 'quantiles':
             self.scenarios = self.quantiles()
+        elif type == 'point':
+            self.scenarios = list(self.point_forecast())
 
 
     def recurrent_gaussian(self, prev_steps, id_param, horizon=24):
