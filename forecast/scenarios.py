@@ -10,6 +10,12 @@ class Scenario_Generator:
     def __init(self, type='norm', n_scenarios=10):
         self.type = type
         self.n_scenarios = n_scenarios
+        if type == 'recurrent_gaussian_qts':
+            self.qts_model = Forecast(5, model_dir='models/lag_minus_1/')
+        elif type == 'quantiles':
+            self.qts_model = Forecast(5, model_dir='models/lag_minus_24/')
+        elif type == 'point':
+            self.qts_model = Forecast(5, model_dir='models/point/')
         self.qts_model = Forecast(5)
         self.scenarios = []
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
@@ -44,16 +50,31 @@ class Scenario_Generator:
         for i in range(1, horizon):
             sample = self.generate_next_step(id = id_param, last_param = sample)
             scenario[i] = sample
-        self.scenario = scenario
+        return scenario
 
-    def quantiles(self):
-        # if number of scenarios is even, take equally spaced quantiles from the sorted list of base quantiles
-        if self.n_scenarios % 2 == 0:
-            quantiles = np.sort(self.base_quantiles)[::int(len(self.base_quantiles)/self.n_scenarios)]
+    def quantiles(self, prev_steps, id_param, horizon=24):
+        if self.n_scenarios <= 20:
+            self.qts_model.update_prev_steps(prev_steps)
+            # if number of scenarios is even, take equally spaced quantiles from the list of base quantiles
+            if self.n_scenarios % 2 == 0:
+                quantiles = self.base_quantiles[::int(len(self.base_quantiles)/self.n_scenarios)]
+            else:
+                # if number of scenarios is odd, take the 0.5 quantile and even number of quantiles from both sides of the sorted list of base quantiles
+                quantiles = self.base_quantiles[::int(len(self.base_quantiles)/(self.n_scenarios-1))]
+                quantiles = np.concatenate([[0.5], quantiles])
+            qts_final = np.zeros((horizon, self.n_scenarios))
+            # find the indexes of the quantiles in the list of base quantiles
+            quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
+            for i_step in range(horizon):
+                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step)
+                qts_final[i_step, :] = qts_temp[quantile_indexes]
         else:
-            # if number of scenarios is odd, take the 0.5 quantile and even number of quantiles from both sides of the sorted list of base quantiles
-            quantiles = np.sort(self.base_quantiles)[::int(len(self.base_quantiles)/(self.n_scenarios-1))]
-            quantiles = np.concatenate([[0.5], quantiles])
-        return quantiles
+            print('Number of scenarios should be less than 20')
+        return qts_final
 
-    def 
+    def point_forecast(self, prev_steps, id_param, horizon=24):
+        self.qts_model.update_prev_steps(prev_steps)
+        scenario = np.zeros(horizon)
+        for i in range(1, horizon):
+            scenario[i] = self.qts_model.get_point_forecast_step(id_param, step=i)
+        return scenario
