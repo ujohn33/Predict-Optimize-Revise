@@ -8,7 +8,7 @@ class MPC(Manager):
 
         self.fixed_steps = fixed_steps
 
-    def calculte_powers(self, prev_steps, forec_scenarios, time_step):
+    def calculate_powers(self, prev_steps, forec_scenarios, time_step):
 
         num_scenarios = len(forec_scenarios)
         num_buildings = len(forec_scenarios[0])

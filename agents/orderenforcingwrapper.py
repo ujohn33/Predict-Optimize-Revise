@@ -58,14 +58,7 @@ class OrderEnforcingAgent:
             agent_count=len(observation), observation=observation
         ).calculate()
 
-        actions = []
-
-        for agent_id in range(self.num_buildings):
-            # reward = rewards[agent_id]
-            # actions.append(self.agent.compute_action(observation[agent_id], agent_id))
-            actions.append(self.agent.compute_action(observation, agent_id))
-
-        # If you want a single central agent setup, change this function as needed
+        actions = self.agent.compute_action(observation)
 
         # print(actions)
         return actions
