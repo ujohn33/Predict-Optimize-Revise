@@ -1,5 +1,6 @@
 from gym.spaces import Box
 from agents.user_agent import UserAgent
+from agents.mpc_agent import MPCAgent
 from rewards.user_reward import UserReward
 
 
@@ -19,7 +20,7 @@ class OrderEnforcingAgent:
 
     def __init__(self):
         self.num_buildings = None
-        self.agent = UserAgent()
+        self.agent = MPCAgent()
         self.action_space = None
 
     def register_reset(self, observation):
