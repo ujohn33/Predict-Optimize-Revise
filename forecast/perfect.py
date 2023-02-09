@@ -7,10 +7,10 @@ class PerfectForecast:
         consum_file = "data/citylearn_challenge_2022_phase_1/net_minmax_preds.csv"
         self.df_forec = pd.read_csv(consum_file).to_dict("list")
 
-    def get_forecast(self):
-        init_ind = self.time_step
+    def get_forecast(self, time_step, num_buildings):
+        init_ind = time_step
         forec = list()
-        for i in range(self.num_buildings):
+        for i in range(num_buildings):
             df_slice = self.df_forec[f"Net+1_{i+1}"][
                 init_ind : init_ind + self.steps_ahead
             ]

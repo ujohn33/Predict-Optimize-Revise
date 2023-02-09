@@ -1,6 +1,6 @@
 from ems.manager import Manager
 from scipy.optimize import linprog
-
+import numpy as np
 
 class MPC(Manager):
     def __init__(self, fixed_steps):
@@ -31,10 +31,7 @@ class MPC(Manager):
 
         soc_init = [observation[i][22] * batt_capacity[i] for i in range(num_buildings)]
 
-        last_step = [
-            observation[f"net_electricity_consumption"][i][-1]
-            for i in range(num_buildings)
-        ]
+        last_step = [observation[i][23] for i in range(num_buildings)]
         last_step_sum = sum(last_step)
 
         price_cost = [self.price_df[(time_step + i) % 8760] for i in range(horizon)]
@@ -47,7 +44,7 @@ class MPC(Manager):
         base_carb = list()
 
         for i in range(num_scenarios):
-            forec_last_st = last_step_sum + forec_step_sum[i]
+            forec_last_st = [last_step_sum] + forec_step_sum[i]
 
             base_carb_cost = 0
             for j in range(num_buildings):
@@ -57,6 +54,7 @@ class MPC(Manager):
                         for k, val in enumerate(forec_scenarios[i][j])
                     ]
                 )
+            base_carb.append(base_carb_cost)
 
             base_price_cost = sum(
                 [
@@ -317,7 +315,7 @@ class MPC(Manager):
             A_eq=A_eq,
             b_eq=b_eq,
             bounds=bounds,
-            options={"disp": True},
+            #options={"disp": True},
         )
         res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
         # soc_power.append(res)
@@ -325,6 +323,6 @@ class MPC(Manager):
         selected_power = list()
         for i in range(num_buildings):
             batt_power = res.x[num_obj + i]
-            selected_power.append(batt_power)
+            selected_power.append([batt_power])
 
-        return selected_power
+        return np.array(selected_power)

@@ -3,14 +3,14 @@ from forecast.perfect import PerfectForecast
 from input_function import observation_no_forecast_added_hour_range as input_func
 from input_function import active_observations
 from forecast.scenarios import Scenario_Generator
-
+import numpy as np
 
 class MPCAgent:
     def __init__(self):
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(1)
-        self.scenario_gen = Scenario_Generator()
+        self.scenario_gen = PerfectForecast(24)
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None
@@ -22,13 +22,14 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        self.scenario_gen.generate_scenarios
-        forec_scenarios = self.scenario_gen.scenarios
+        # self.scenario_gen.generate_scenarios
+        forec_scenarios = self.scenario_gen.get_forecast(self.time_step, self.num_buildings)
 
-        # actions = self.manager.calculate_powers(
-        #    observation, forec_scenarios, self.time_step
-        # )
-        actions = [0, 0, 0, 0, 0]
+
+        actions = self.manager.calculate_powers(
+           observation, forec_scenarios, self.time_step
+        )
+        # actions = np.array([[0], [0], [0], [0], [0]])
         self.time_step += 1
         return actions
 
