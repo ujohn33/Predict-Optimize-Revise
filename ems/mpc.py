@@ -4,7 +4,7 @@ from scipy.optimize import linprog
 
 class MPC(Manager):
     def __init__(self, fixed_steps):
-        super().__init__(self)
+        super().__init__()
 
         self.fixed_steps = fixed_steps
 
