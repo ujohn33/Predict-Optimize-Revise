@@ -22,7 +22,8 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        forec_scenarios = self.forecaster.get_forecast(self.prev_steps)
+        self.scenario_gen.generate_scenarios
+        forec_scenarios = self.scenario_gen.scenarios
 
         #actions = self.manager.calculate_powers(
         #    self.prev_steps, forec_scenarios, self.time_step
@@ -38,7 +39,7 @@ class MPCAgent:
 
     def populate_prev_steps(self, observations):
         done_keys = list()
-        new_obs, obs_info = input_func(observations)
+        new_obs, obs_info = input_func(self, observations)
         num_buildings = len(observations)
 
         # Add history of observations

@@ -7,7 +7,7 @@ from forecast.forecast_functions import Forecast
 
 
 class Scenario_Generator:
-    def __init(self, type='norm', n_scenarios=10):
+    def __init(self, type='norm', n_scenarios=10, n_buildings=5):
         self.type = type
         self.n_scenarios = n_scenarios
         if type == 'recurrent_gaussian_qts':
@@ -33,16 +33,23 @@ class Scenario_Generator:
         sample_temp = pdf.rvs(1)
         return sample_temp
 
-    def generate_scenarios(self, prev_steps, id_param, type, horizon=24):
+    def generate_scenarios(self, prev_steps, type, horizon=24):
+        for i in range(self.n_buildings):
+            scens_B_temp = self.generate_scenarios_for_B(prev_steps, i, type, horizon)
+            self.scenarios.append(scens_B_temp)
+
+    def generate_scenarios_for_B(self, prev_steps, id_param, type, horizon=24):
+        scenarios_B = []
         if type == 'recurrent_gaussian_qts':
             for i in range(self.n_scenarios):
-                self.scenarios.append(self.recurrent_gaussian(prev_steps, id_param, horizon))
+                scenarios_B.append(self.recurrent_gaussian(prev_steps, id_param, horizon))
                 print('Scenario {} generated'.format(i+1))
             print('All scenarios generated')
         elif type == 'quantiles':
-            self.scenarios = self.quantiles()
+            scenarios_B = self.quantiles()
         elif type == 'point':
-            self.scenarios = list(self.point_forecast())
+            scenarios_B = list(self.point_forecast())
+        return scenarios_B
 
 
     def recurrent_gaussian(self, prev_steps, id_param, horizon=24):
