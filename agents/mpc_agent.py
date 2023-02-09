@@ -1,4 +1,5 @@
 from ems.mpc import MPC
+from forecast.perfect import PerfectForecast
 
 
 class MPCAgent:
@@ -6,7 +7,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(1)
-        self.forecaster = ForecastingClass()
+        self.forecaster = PerfectForecast(24)
         self.time_step = 0
 
     def set_action_space(self, agent_id, action_space):
@@ -19,7 +20,7 @@ class MPCAgent:
         forec_scenarios = self.forecaster.get_forecast(self.prev_steps)
 
         actions = self.manager.calculate_powers(
-            self.prev_steps, forec_scenarios, self.time_step
+            observation, forec_scenarios, self.time_step
         )
         self.time_step += 1
         return actions

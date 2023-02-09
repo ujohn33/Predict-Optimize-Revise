@@ -8,11 +8,13 @@ class MPC(Manager):
 
         self.fixed_steps = fixed_steps
 
-    def calculate_powers(self, prev_steps, forec_scenarios, time_step):
+    def calculate_powers(self, observation, forec_scenarios, time_step):
 
         num_scenarios = len(forec_scenarios)
         num_buildings = len(forec_scenarios[0])
         horizon = len(forec_scenarios[0][0])
+
+        batt_capacity = [6.4 for i in range(num_buildings)]
 
         if self.fixed_steps == 0:
             self.fixed_steps = horizon
@@ -27,13 +29,10 @@ class MPC(Manager):
                 ]
                 forec_step_sum[i].append(sum(building_steps))
 
-        soc_init = [
-            prev_steps[f"electrical_storage_soc"][i][-1] * self.batt_capacity[i]
-            for i in range(num_buildings)
-        ]
+        soc_init = [observation[i][22] * batt_capacity[i] for i in range(num_buildings)]
 
         last_step = [
-            prev_steps[f"net_electricity_consumption"][i][-1]
+            observation[f"net_electricity_consumption"][i][-1]
             for i in range(num_buildings)
         ]
         last_step_sum = sum(last_step)
@@ -278,7 +277,7 @@ class MPC(Manager):
                         cur_constr_high[var_ind] = 1
 
                     equal_constr_low = soc_init[j]
-                    equal_constr_high = self.batt_capacity[j] - soc_init[j]
+                    equal_constr_high = batt_capacity[j] - soc_init[j]
 
                     soc_low_constr_ub.append(cur_constr_low)
                     soc_low_equal_ub.append(equal_constr_low)
@@ -320,6 +319,7 @@ class MPC(Manager):
             bounds=bounds,
             options={"disp": True},
         )
+        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
         # soc_power.append(res)
         # print(res)
         selected_power = list()
