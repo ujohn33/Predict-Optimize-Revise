@@ -1,7 +1,7 @@
 from ems.mpc import MPC
 from input_function import observation_no_forecast_added_hour_range as input_func
 from input_function import active_observations
-from forecast.scenarios import ScenarioGenerator
+from forecast.scenarios import Scenario_Generator
 
 
 class MPCAgent:

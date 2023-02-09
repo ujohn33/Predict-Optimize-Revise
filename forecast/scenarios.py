@@ -3,7 +3,7 @@ import joblib
 import pandas as pd
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
-from forecast_functions import Forecast
+from forecast.forecast_functions import Forecast
 
 
 class Scenario_Generator:
