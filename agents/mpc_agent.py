@@ -10,7 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(0)
-        self.scenario_gen = PerfectForecast(24)
+        self.scenario_gen = Scenario_Generator(type="quantiles")
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None
@@ -22,13 +22,12 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        forec_scenarios = self.scenario_gen.get_forecast(self.time_step, self.num_buildings)
-
+        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step)
 
         actions = self.manager.calculate_powers(
            observation, forec_scenarios, self.time_step
         )
-        # actions = np.array([[0], [0], [0], [0], [0]])
+        # actions = [[0], [0], [0], [0], [0]]
         self.time_step += 1
         return actions
 
