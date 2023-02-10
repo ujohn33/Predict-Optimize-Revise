@@ -10,7 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(1)
-        self.scenario_gen = Scenario_Generator()
+        self.scenario_gen = Scenario_Generator(type="recurrent_gaussian_qts")
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None
@@ -22,12 +22,12 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, 'point', )
+        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step)
 
         # actions = self.manager.calculate_powers(
         #    observation, forec_scenarios, self.time_step
         # )
-        actions = [0, 0, 0, 0, 0]
+        actions = [[0], [0], [0], [0], [0]]
         self.time_step += 1
         return actions
 
