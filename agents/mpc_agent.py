@@ -10,6 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(1)
+        # type options are 'point', 'quantiles', and 'recurrent_gaussian_qts'
         self.scenario_gen = Scenario_Generator(type="quantiles")
         self.time_step = 0
         self.num_buildings = None

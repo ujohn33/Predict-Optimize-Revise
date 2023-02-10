@@ -65,7 +65,7 @@ class Scenario_Generator:
                 print('Scenario {} generated'.format(i+1))
             print('All scenarios generated')
         elif type == 'quantiles':
-            scenarios_B = self.quantiles()
+            scenarios_B = self.quantiles(prev_steps, id_param, horizon)
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param)]
         return scenarios_B
