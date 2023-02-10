@@ -9,7 +9,7 @@ class MPCAgent:
     def __init__(self):
         self.action_space = {}
         self.prev_steps = {}
-        self.manager = MPC(1)
+        self.manager = MPC(0)
         self.scenario_gen = PerfectForecast(24)
         self.time_step = 0
         self.num_buildings = None
@@ -22,7 +22,6 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        # self.scenario_gen.generate_scenarios
         forec_scenarios = self.scenario_gen.get_forecast(self.time_step, self.num_buildings)
 
 

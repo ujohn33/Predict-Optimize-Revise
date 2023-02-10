@@ -16,4 +16,4 @@ class PerfectForecast:
             ]
             forec.append(list(df_slice))
 
-        return [forec]
+        return [forec, forec]
