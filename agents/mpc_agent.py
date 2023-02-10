@@ -10,7 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(1)
-        self.scenario_gen = Scenario_Generator(type="recurrent_gaussian_qts")
+        self.scenario_gen = Scenario_Generator(type="quantiles")
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None

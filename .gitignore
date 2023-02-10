@@ -1,6 +1,7 @@
 data/extra_train.csv
 data/quantile/year_qs_test.csv
 data/quantile/year_qs.csv
+*.pyc
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

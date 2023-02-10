@@ -1,6 +1,7 @@
 import numpy as np
 import joblib
 import pandas as pd
+import lightgbm as lgb
 from scipy.stats import norm, multivariate_normal
 
 
@@ -26,12 +27,13 @@ class Forecast:
         self.diffuse_solar_pred = {}
         self.X_old = np.zeros((8760, self.num_buildings, 17))
         self.y_old = np.zeros((8760, self.num_buildings, 1))
+        self.init_forecast()
         if point_forecast:
             self.model_pt = joblib.load(model_dir+"lgb_point_step_24.pkl")
         else:
             for qt in self.quantiles:
-                self.model_dict[qt] = joblib.load(model_dir+"lgb_{}.pkl".format(qt))
-        self.init_forecast()
+                # read an lgb model in a txt file
+                self.model_dict[qt] = lgb.Booster(model_file=model_dir+"lgb_{}.txt".format(qt.round(3)))
 
     def init_forecast(self):
         # make a conservative estimate for max and min consumption
@@ -124,7 +126,7 @@ class Forecast:
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
         #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
         #   'relative_humidity+1', 'drybulb_temp+1']
-        columnames = self.model_dict.values()[0].feature_name()
+        columnames = self.model_dict[0.001].feature_name()
         # rename items in the list according to a dict
         X_order = [self.renamer.get(x, x) for x in columnames]
         # make a vector of last values from prev steps using keys from X_order
@@ -218,7 +220,7 @@ class Forecast:
             forec[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
-            forec = [i[0] for i in forec]
+            #forec = [i[0] for i in forec]
             return forec
 
 

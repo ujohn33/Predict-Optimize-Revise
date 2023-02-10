@@ -1,17 +1,22 @@
 import numpy as np
 import joblib
 import pandas as pd
+import sys
 import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
 
+def debugger_is_active() -> bool:
+    """Return if the debugger is currently active"""
+    return hasattr(sys, 'gettrace') and sys.gettrace() is not None
 
 class Scenario_Generator:
     def __init__(self, type='norm', n_scenarios=10, n_buildings=5):
         self.type = type
         self.n_scenarios = n_scenarios
         self.n_buildings = n_buildings
+        self.debugger_is_active = debugger_is_active()
         if type == 'recurrent_gaussian_qts':
             self.qts_model = Forecast(5, model_dir='models/lag_minus_1/')
         elif type == 'quantiles':
@@ -44,8 +49,11 @@ class Scenario_Generator:
             scenarios.append(scens_B_temp)
             # plot a list of lists with the same length and range on the x-axis
             for scen in scenarios:
-                self.plot_scenario(scen[0])
-        plt.show()
+                for i in range(len(scen)):
+                    if self.debugger_is_active:
+                        plt.plot(scen[i])
+                if self.debugger_is_active:
+                    plt.show()
         scenarios = self.swap_levels(scenarios)
         return scenarios
 
@@ -53,7 +61,7 @@ class Scenario_Generator:
         scenarios_B = []
         if type == 'recurrent_gaussian_qts':
             for i in range(self.n_scenarios):
-                scenarios_B.append(self.recurrent_gaussian(prev_steps, id_param, horizon))
+                scenarios_B.append(self.recurrent_gaussian(prev_steps, current_step, id_param, horizon))
                 print('Scenario {} generated'.format(i+1))
             print('All scenarios generated')
         elif type == 'quantiles':
@@ -63,12 +71,13 @@ class Scenario_Generator:
         return scenarios_B
 
 
-    def recurrent_gaussian(self, prev_steps, id_param, horizon=24):
+    def recurrent_gaussian(self, prev_steps, current_step, id_param, horizon=24):
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
         sample = False
         for i in range(1, horizon):
-            sample = self.generate_next_step(id = id_param, last_param = sample)
+            sample = self.generate_next_step(id_param= id_param, last_param = sample)
             scenario[i] = sample
         return scenario
 
