@@ -1,6 +1,6 @@
 import numpy as np
 import time
-
+from utils.logger import log_usefull
 """
 Please do not make changes to this file. 
 This is only a reference script provided to allow you 
@@ -86,6 +86,8 @@ def evaluate():
             
             num_steps += 1
             if num_steps % 1000 == 0:
+                # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
+                # log_usefull(env, filename)
                 print(f"Num Steps: {num_steps}, Num episodes: {episodes_completed}")
 
             if episodes_completed >= Constants.episodes:
@@ -101,6 +103,8 @@ def evaluate():
         print("Average Price Cost:", np.mean([e['price_cost'] for e in episode_metrics]))
         print("Average Emmision Cost:", np.mean([e['emmision_cost'] for e in episode_metrics]))
         print("Average Grid Cost:", np.mean([e['grid_cost'] for e in episode_metrics]))
+        total_cost = np.mean([e['price_cost']+e['emmision_cost']+e['grid_cost'] for e in episode_metrics])
+        print("Average Total Cost:", total_cost/3)
     print(f"Total time taken by agent: {agent_time_elapsed}s")
     
 
