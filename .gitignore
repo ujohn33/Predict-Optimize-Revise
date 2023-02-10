@@ -164,7 +164,4 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-ems/__pycache__/manager.cpython-39.pyc
-ems/__pycache__/mpc.cpython-39.pyc
-forecast/__pycache__/forecast_functions.cpython-39.pyc
-forecast/__pycache__/scenarios.cpython-39.pyc
+debug_logs/
