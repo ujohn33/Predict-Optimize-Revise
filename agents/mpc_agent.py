@@ -1,4 +1,5 @@
 from ems.mpc import MPC
+from forecast.perfect import PerfectForecast
 from input_function import observation_no_forecast_added_hour_range as input_func
 from input_function import active_observations
 from forecast.scenarios import Scenario_Generator
@@ -14,7 +15,6 @@ class MPCAgent:
         self.num_buildings = None
         self.pv_capacity = None
 
-
     def set_action_space(self, agent_id, action_space):
         self.action_space[agent_id] = action_space
 
@@ -24,10 +24,10 @@ class MPCAgent:
 
         forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, 'point', )
 
-        #actions = self.manager.calculate_powers(
-        #    self.prev_steps, forec_scenarios, self.time_step
-        #)
-        actions = [0,0,0,0,0]
+        # actions = self.manager.calculate_powers(
+        #    observation, forec_scenarios, self.time_step
+        # )
+        actions = [0, 0, 0, 0, 0]
         self.time_step += 1
         return actions
 

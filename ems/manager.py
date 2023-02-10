@@ -1,5 +1,12 @@
+import pandas as pd
+
+
 class Manager:
     def __init__(self):
-        self.carb_df =0
-        self.price_df =0
-        self.batt_capacity =0
+        carbon_file = "data/citylearn_challenge_2022_phase_1/carbon_intensity_full.csv"
+        self.carbon_df = pd.read_csv(carbon_file).to_dict("list")
+
+        price_file = "data/citylearn_challenge_2022_phase_1/pricing.csv"
+        self.price_df = pd.read_csv(price_file).to_dict("list")[
+            "Electricity Pricing [$]"
+        ]
