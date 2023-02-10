@@ -33,10 +33,15 @@ class Scenario_Generator:
         sample_temp = pdf.rvs(1)
         return sample_temp
 
+    def swap_levels(self, lst):
+        return [[sublist[i] for sublist in lst] for i in range(len(lst[0]))]
+
     def generate_scenarios(self, prev_steps, type, horizon=24):
         for i in range(self.n_buildings):
             scens_B_temp = self.generate_scenarios_for_B(prev_steps, i, type, horizon)
             self.scenarios.append(scens_B_temp)
+        self.scenarios = self.swap_levels(self.scenarios)
+        return self.scenarios
 
     def generate_scenarios_for_B(self, prev_steps, id_param, type, horizon=24):
         scenarios_B = []

@@ -22,8 +22,7 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        self.scenario_gen.generate_scenarios
-        forec_scenarios = self.scenario_gen.scenarios
+        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, 'point', )
 
         #actions = self.manager.calculate_powers(
         #    self.prev_steps, forec_scenarios, self.time_step
