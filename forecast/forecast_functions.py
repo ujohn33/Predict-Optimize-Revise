@@ -220,8 +220,8 @@ class Forecast:
             forec[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
-            #forec = [i[0] for i in forec]
-            return forec
+        #forec = [i[0] for i in forec]
+        return forec
 
 
     def get_point_forecast_step(self, step: int, id: int):
