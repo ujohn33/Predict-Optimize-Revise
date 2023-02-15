@@ -25,6 +25,8 @@ class Scenario_Generator:
             self.qts_model = Forecast(5, model_dir='models/point/', point_forecast=True)
         self.scenarios = []
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
+        # round to 3 decimals
+        self.base_quantiles = np.round(self.base_quantiles, 3)
 
     def estimate_pdf(self, qts_temp):
         mu, std = norm.fit(qts_temp)
@@ -41,6 +43,12 @@ class Scenario_Generator:
 
     def swap_levels(self, lst):
         return [[sublist[i] for sublist in lst] for i in range(len(lst[0]))]
+
+    def sample_quantiles(self, num_quantiles):
+        start = 0.05
+        end = 0.95
+        quantile_samples = np.linspace(start, end, num=num_quantiles)
+        return quantile_samples
 
     def generate_scenarios(self, prev_steps, current_step, horizon=24):
         scenarios = []
@@ -65,7 +73,7 @@ class Scenario_Generator:
                 print('Scenario {} generated'.format(i+1))
             print('All scenarios generated')
         elif type == 'quantiles':
-            scenarios_B = self.quantiles()
+            scenarios_B = self.quantiles(prev_steps, current_step, id_param, horizon)
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param)]
         return scenarios_B
@@ -81,16 +89,15 @@ class Scenario_Generator:
             scenario[i] = sample
         return scenario
 
-    def quantiles(self, prev_steps, id_param, horizon=24):
+    def quantiles(self, prev_steps, current_step, id_param, horizon=24):
+        self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
         if self.n_scenarios <= 20:
             self.qts_model.update_prev_steps(prev_steps)
             # if number of scenarios is even, take equally spaced quantiles from the list of base quantiles
-            if self.n_scenarios % 2 == 0:
-                quantiles = self.base_quantiles[::int(len(self.base_quantiles)/self.n_scenarios)]
-            else:
-                # if number of scenarios is odd, take the 0.5 quantile and even number of quantiles from both sides of the sorted list of base quantiles
-                quantiles = self.base_quantiles[::int(len(self.base_quantiles)/(self.n_scenarios-1))]
-                quantiles = np.concatenate([[0.5], quantiles])
+            quantiles = self.sample_quantiles(self.n_scenarios)
+            # round to 3 decimals
+            quantiles = np.round(quantiles, 3)
             qts_final = np.zeros((horizon, self.n_scenarios))
             # find the indexes of the quantiles in the list of base quantiles
             quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
