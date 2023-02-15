@@ -316,22 +316,24 @@ class MPC(Manager):
                     soc_high_constr_ub.append(cur_constr_high)
                     soc_high_equal_ub.append(equal_constr_high)
 
-        c = obj_func
-        A_ub = (
+        c = np.array(obj_func,dtype=float)
+        A_ub = np.array(
             carb_pos_constr_ub
             + price_pos_constr_ub
             + soc_low_constr_ub
-            + soc_high_constr_ub
+            + soc_high_constr_ub, 
+            dtype=float
         )
-        b_ub = (
+        b_ub = np.array(
             carb_pos_equal_ub
             + price_pos_equal_ub
             + soc_low_equal_ub
-            + soc_high_equal_ub
+            + soc_high_equal_ub, 
+            dtype=float
         )
 
-        A_eq = carb_calc_constr_eq + price_calc_constr_eq + abs_constr_eq+grid_calc_constr_eq
-        b_eq = carb_calc_equal_eq + price_calc_equal_eq + abs_equal_eq+grid_calc_equal_eq
+        A_eq = np.array(carb_calc_constr_eq + price_calc_constr_eq + abs_constr_eq+grid_calc_constr_eq, dtype=float)
+        b_eq = np.array(carb_calc_equal_eq + price_calc_equal_eq + abs_equal_eq+grid_calc_equal_eq, dtype=float)
 
         rest_positive = num_carb_pow + num_price_pow + num_grid_abs_1 + num_grid_abs_2
 
