@@ -1,5 +1,5 @@
 from ems.mpc import MPC
-from forecast.perfect import PerfectForecast
+from forecast.perfect import PerfectForecast, PerfectRealForecast
 from input_function import observation_no_forecast_added_hour_range as input_func
 from input_function import active_observations
 from forecast.scenarios import Scenario_Generator
@@ -10,7 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(0)
-        self.scenario_gen = Scenario_Generator(type="quantiles")
+        self.scenario_gen = PerfectForecast(24)
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None

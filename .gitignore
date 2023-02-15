@@ -165,3 +165,7 @@ cython_debug/
 #.idea/
 
 debug_logs/
+
+# time debug profiles
+*.prof
+
