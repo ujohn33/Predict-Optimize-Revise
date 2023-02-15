@@ -22,7 +22,6 @@ class MPC(Manager):
         horizon = len(forec_scenarios[0][0])
 
         batt_capacity = [6.4 for i in range(num_buildings)]
-        nominal_power = [5.0 for i in range(num_buildings)]
 
         if self.fixed_steps == 0:
             fixed_steps = horizon
