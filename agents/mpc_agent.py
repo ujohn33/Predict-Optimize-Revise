@@ -10,8 +10,8 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(0)
-        self.scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =10)
-        # self.scenario_gen = RealForecast()
+        self.scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =5)
+        # self.scenario_gen = PerfectForecast(12)
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None
@@ -23,7 +23,7 @@ class MPCAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step)
+        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step, 24)
 
         actions = self.manager.calculate_powers(
            observation, forec_scenarios, self.time_step

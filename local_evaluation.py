@@ -11,9 +11,6 @@ use this script for orchestrating the evaluations.
 from agents.orderenforcingwrapper import OrderEnforcingAgent
 from citylearn.citylearn import CityLearnEnv
 
-class Constants:
-    episodes = 1
-    schema_path = './data/citylearn_challenge_2022_phase_1/schema.json'
 
 def action_space_to_dict(aspace):
     """ Only for box space """
@@ -37,10 +34,11 @@ def env_reset(env):
                 "observation": observations }
     return obs_dict
 
-def evaluate(total_steps=9000):
+def evaluate(total_steps=9000, phase_num = 1):
     print("Starting local evaluation")
     
-    env = CityLearnEnv(schema=Constants.schema_path)
+    schema_path = f'./data/citylearn_challenge_2022_phase_{phase_num}/schema.json'
+    env = CityLearnEnv(schema=schema_path)
     agent = OrderEnforcingAgent()
 
     obs_dict = env_reset(env)
@@ -85,13 +83,12 @@ def evaluate(total_steps=9000):
                 agent_time_elapsed += time.perf_counter()- step_start
             
             num_steps += 1
-            print(num_steps)
             if num_steps % 1000 == 0:
                 # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
                 # log_usefull(env, filename)
                 print(f"Num Steps: {num_steps}, Num episodes: {episodes_completed}")
 
-            if episodes_completed >= Constants.episodes:
+            if episodes_completed >= 1:
                 break
     except KeyboardInterrupt:
         print("========================= Stopping Evaluation =========================")

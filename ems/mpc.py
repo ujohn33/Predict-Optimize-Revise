@@ -110,7 +110,7 @@ class MPC(Manager):
         for i in range(num_scenarios):
             obj_func[i * 3] = 1 / base_carb[i]
             obj_func[i * 3 + 1] = 1 / base_price[i]
-            obj_func[i * 3 + 2] = 1 / base_grid[i]
+            obj_func[i * 3 + 2] = 1 / base_grid[i]/2
 
         # Set carbon cost to be positive
         # forall s,b,t batt_power[s,b,t]-carb_pow[s,b,t]/carb_cost[t]<=-baseload[s,b,t]
