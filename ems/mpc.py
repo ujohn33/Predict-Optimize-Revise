@@ -62,6 +62,8 @@ class MPC(Manager):
                         for k, val in enumerate(forec_scenarios[i][j])
                     ]
                 )
+            if base_carb_cost == 0:
+                base_carb_cost = 1
             base_carb.append(base_carb_cost)
 
             base_price_cost = sum(
@@ -70,6 +72,8 @@ class MPC(Manager):
                     for j, val in enumerate(forec_step_sum[i])
                 ]
             )
+            if base_price_cost == 0:
+                base_price_cost = 1
             base_price.append(base_price_cost)
 
             base_grid_cost = sum(

@@ -63,7 +63,7 @@ def evaluate(total_steps=9000):
             ### use this script for orchestrating the evaluations. 
 
             observations, _, done, _ = env.step(actions)
-            if done or num_steps == total_steps:
+            if done or (num_steps+1) == total_steps:
                 episodes_completed += 1
                 metrics_t = env.evaluate()
                 metrics = {"price_cost": metrics_t[0], 
