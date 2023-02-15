@@ -10,7 +10,7 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(0)
-        self.scenario_gen = Scenario_Generator(type = 'point', n_scenarios =10)
+        self.scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =10)
         # self.scenario_gen = PerfectForecast()
         self.time_step = 0
         self.num_buildings = None
