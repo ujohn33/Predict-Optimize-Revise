@@ -38,8 +38,8 @@ class Forecast:
     def init_forecast(self):
         # look-up varinance for each hour and month and save it to a dict
         # save the pandas dataframe with hour in index and month in columnds to a dictionary 
-        self.variance = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
-        self.variance = self.variance.to_dict(orient="dict")
+        self.variance_dict = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
+        self.variance_dict = self.variance_dict.to_dict(orient="dict")
         # print("variance dict: ", self.variance)
 
 
@@ -308,12 +308,12 @@ class Forecast:
                     X[i] = np.sin(2 * np.pi * self.prev_steps["month"][-1] / 12)
                 elif key in self.prev_steps.keys():
                     X[i] = self.prev_steps[key][-1]
-                # add a value to a prediction vector
-                forec = self.model_pt.predict(X.reshape(1, -1))
-                # denormalize the values
-                forec = self.min_max_denormalize(
-                    forec, self.net_min_dict[id], self.net_max_dict[id]
-                )
+            # add a value to a prediction vector
+            forec = self.model_pt.predict(X.reshape(1, -1))
+            # denormalize the values
+            forec = self.min_max_denormalize(
+                forec, self.net_min_dict[id], self.net_max_dict[id]
+            )
             forec = forec[0]
             return forec
 
@@ -321,5 +321,7 @@ class Forecast:
     def get_point_and_variance(self, step: int, id: int):
         forec = self.get_point_forecast_step(step, id)
         # look-up the variance in a variance dict
-        var = self.variance_dict[self.prev_steps["hour"]][self.prev_steps["hour"]]
+        var = self.variance_dict[self.prev_steps["month"][0]][str(self.prev_steps["hour"][0]-1)]
+        # min max normalize the variance
+        var = self.min_max_normalize(var, self.net_min_dict[id], self.net_max_dict[id])
         return forec, var

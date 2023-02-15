@@ -62,8 +62,8 @@ class Scenario_Generator:
                 for i in range(len(scen)):
                     if self.debugger_is_active:
                         plt.plot(scen[i])
-                if self.debugger_is_active:
-                    plt.show()
+        if self.debugger_is_active:
+            plt.show()
         scenarios = self.swap_levels(scenarios)
         return scenarios
 

@@ -58,4 +58,3 @@ def crps_ensemble(obs,fc,fair=True):
             vectorize=True
         )
 
-def 
