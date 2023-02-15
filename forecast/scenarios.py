@@ -79,8 +79,9 @@ class Scenario_Generator:
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
         elif type == 'point_and_variance':
+            sceni, vari = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
             for i in range(self.n_scenarios):
-                scenarios_B.append(self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon))
+                scenarios_B.append(sceni + np.random.normal(0, vari, horizon))
         return scenarios_B
 
 
@@ -130,9 +131,7 @@ class Scenario_Generator:
         for i in range(1, horizon):
             scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i, id=id_param)
         # add uncertainty to the point forecast
-        scenario = scenario + np.random.normal(0, variances)
-        #self.plot_scenario(scenario)
-        return list(scenario)
+        return scenario, variances
 
     def plot_scenario(self, scenario: list):
         plt.plot(range(len(scenario)), scenario)
