@@ -23,6 +23,8 @@ class Scenario_Generator:
             self.qts_model = Forecast(5, model_dir='models/lag_minus_24/')
         elif type == 'point':
             self.qts_model = Forecast(5, model_dir='models/point/', point_forecast=True)
+        elif type == 'point_and_variance':
+            self.qts_model = Forecast(5, model_dir='models/point/', point_forecast=True)    
         self.scenarios = []
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
         # round to 3 decimals
@@ -75,7 +77,10 @@ class Scenario_Generator:
         elif type == 'quantiles':
             scenarios_B = self.quantiles(prev_steps, current_step, id_param, horizon)
         elif type == 'point':
-            scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param)]
+            scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
+        elif type == 'point_and_variance':
+            for i in range(self.n_scenarios):
+                scenarios_B.append(self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon))
         return scenarios_B
 
 
@@ -114,6 +119,18 @@ class Scenario_Generator:
         self.qts_model.update_current_step(current_step)
         for i in range(1, horizon):
             scenario[i] = self.qts_model.get_point_forecast_step(step=i, id=id_param)
+        #self.plot_scenario(scenario)
+        return list(scenario)
+
+    def point_and_variance(self, prev_steps, current_step, id_param, horizon=24):
+        scenario = np.zeros(horizon)
+        variances = np.zeros(horizon)
+        self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
+        for i in range(1, horizon):
+            scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i, id=id_param)
+        # add uncertainty to the point forecast
+        scenario = scenario + np.random.normal(0, variances)
         #self.plot_scenario(scenario)
         return list(scenario)
 

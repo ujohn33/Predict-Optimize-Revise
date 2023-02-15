@@ -36,6 +36,13 @@ class Forecast:
                 self.model_dict[qt] = lgb.Booster(model_file=model_dir+"lgb_{}.txt".format(qt.round(3)))
 
     def init_forecast(self):
+        # look-up varinance for each hour and month and save it to a dict
+        # save the pandas dataframe with hour in index and month in columnds to a dictionary 
+        self.variance = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
+        self.variance = self.variance.to_dict(orient="dict")
+        print("variance dict: ", self.variance)
+
+
         # make a conservative estimate for max and min consumption
         self.cons_min = 0
         self.cons_max = 5
@@ -309,3 +316,10 @@ class Forecast:
                 )
             forec = forec[0]
             return forec
+
+
+    def get_point_and_variance(self, step: int, id: int):
+        forec = self.get_point_forecast_step(step, id)
+        # look-up the variance in a variance dict
+        var = self.variance_dict[self.prev_steps["hour"]][self.prev_steps["hour"]]
+        return forec, var
