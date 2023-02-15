@@ -37,6 +37,11 @@ def CRPS_ensemble(obs,fc,fair=True,axis=0):
 
     return CRPS.reshape([*odims])
 
+# energy score is the average of the CRPS over all lead times
+def energy_score(obs,fc,fair=True):
+    crps_ensemble = CRPS_ensemble(obs,fc,fair=fair)
+    return np.mean(crps_ensemble)
+
 def crps_ensemble(obs,fc,fair=True):
     """
     A xarray wrapper for CRPS_ensemble()
@@ -52,3 +57,5 @@ def crps_ensemble(obs,fc,fair=True):
             output_core_dims = [['time']],
             vectorize=True
         )
+
+def 
