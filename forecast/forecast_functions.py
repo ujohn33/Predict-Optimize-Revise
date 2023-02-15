@@ -40,7 +40,7 @@ class Forecast:
         # save the pandas dataframe with hour in index and month in columnds to a dictionary 
         self.variance = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
         self.variance = self.variance.to_dict(orient="dict")
-        print("variance dict: ", self.variance)
+        # print("variance dict: ", self.variance)
 
 
         # make a conservative estimate for max and min consumption

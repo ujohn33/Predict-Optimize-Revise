@@ -2,7 +2,7 @@ import pandas as pd
 
 
 class PerfectForecast:
-    def __init__(self, steps_ahead):
+    def __init__(self, steps_ahead=24):
         self.steps_ahead = steps_ahead
         consum_file = "data/citylearn_challenge_2022_phase_1/net_minmax_preds.csv"
         self.df_forec = pd.read_csv(consum_file).to_dict("list")
@@ -17,7 +17,7 @@ class PerfectForecast:
             ]
             forec.append(list(df_slice))
 
-        return [forec, forec]
+        return [forec]
 
 class PerfectRealForecast:
     def __init__(self, steps_ahead):

@@ -37,7 +37,7 @@ def env_reset(env):
                 "observation": observations }
     return obs_dict
 
-def evaluate():
+def evaluate(total_steps=9000):
     print("Starting local evaluation")
     
     env = CityLearnEnv(schema=Constants.schema_path)
@@ -63,7 +63,7 @@ def evaluate():
             ### use this script for orchestrating the evaluations. 
 
             observations, _, done, _ = env.step(actions)
-            if done:
+            if done or num_steps == total_steps:
                 episodes_completed += 1
                 metrics_t = env.evaluate()
                 metrics = {"price_cost": metrics_t[0], 
@@ -85,6 +85,7 @@ def evaluate():
                 agent_time_elapsed += time.perf_counter()- step_start
             
             num_steps += 1
+            print(num_steps)
             if num_steps % 1000 == 0:
                 # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
                 # log_usefull(env, filename)
@@ -109,4 +110,4 @@ def evaluate():
     
 
 if __name__ == '__main__':
-    evaluate()
+    evaluate(48)
