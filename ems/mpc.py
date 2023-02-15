@@ -118,7 +118,8 @@ class MPC(Manager):
         for i in range(num_scenarios):
             for j in range(num_buildings):
                 for k in range(horizon):
-                    cur_constr = [0 for _ in range(num_var)]
+                    
+                    cur_constr = np.zeros((num_var,), dtype=float)
 
                     # Select battery power
                     if k < fixed_steps:
@@ -149,7 +150,7 @@ class MPC(Manager):
         carb_calc_constr_eq = list()
         carb_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = [0 for _ in range(num_var)]
+            cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3
             cur_constr[var_ind] = 1
             for j in range(num_buildings):
@@ -168,7 +169,7 @@ class MPC(Manager):
 
         for i in range(num_scenarios):
             for k in range(horizon):
-                cur_constr = [0 for _ in range(num_var)]
+                cur_constr = np.zeros((num_var,), dtype=float)
                 for j in range(num_buildings):
                     # Select the battery power
                     if k < fixed_steps:
@@ -197,7 +198,7 @@ class MPC(Manager):
         price_calc_constr_eq = list()
         price_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = [0 for _ in range(num_var)]
+            cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3 + 1
             cur_constr[var_ind] = 1
             for k in range(horizon):
@@ -215,7 +216,7 @@ class MPC(Manager):
         abs_equal_eq = list()
         for i in range(num_scenarios):
             for k in range(horizon):
-                cur_constr = [0 for _ in range(num_var)]
+                cur_constr = np.zeros((num_var,), dtype=float)
                 if k == 0:
                     equal_constr = forec_step_sum[i][k] - last_step_sum
                 else:
@@ -261,7 +262,7 @@ class MPC(Manager):
         grid_calc_constr_eq = list()
         grid_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = [0 for _ in range(num_var)]
+            cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3 + 2
             cur_constr[var_ind] = 1
             for k in range(horizon):
@@ -290,8 +291,8 @@ class MPC(Manager):
         for i in range(num_scenarios):
             for j in range(num_buildings):
                 for k in range(horizon):
-                    cur_constr_high = [0 for _ in range(num_var)]
-                    cur_constr_low = [0 for _ in range(num_var)]
+                    cur_constr_low = np.zeros((num_var,), dtype=float)
+                    cur_constr_high = np.zeros((num_var,), dtype=float)
                     for l in range(k+1):
                         if l < fixed_steps:
                             var_ind = num_obj + j * fixed_steps + l
