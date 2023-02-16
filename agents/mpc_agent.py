@@ -10,8 +10,8 @@ class MPCAgent:
         self.action_space = {}
         self.prev_steps = {}
         self.manager = MPC(0)
-        self.scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =5)
-        # self.scenario_gen = PerfectForecast(12)
+        self.scenario_gen = Scenario_Generator(type = 'point', n_scenarios =1)
+        # self.scenario_gen = RealForecast()
         self.time_step = 0
         self.num_buildings = None
         self.pv_capacity = None
@@ -35,7 +35,6 @@ class MPCAgent:
     def set_pv_capacity_and_num_buildings(self, building_info):
         self.num_buildings = len(building_info)
         self.pv_capacity = [i["solar_power"] for i in building_info]
-        # self.init_forecast()
 
     def populate_prev_steps(self, observations):
         done_keys = list()
