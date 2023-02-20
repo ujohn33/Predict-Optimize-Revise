@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
+import random
 
 def debugger_is_active() -> bool:
     """Return if the debugger is currently active"""
@@ -29,18 +30,30 @@ class Scenario_Generator:
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
         # round to 3 decimals
         self.base_quantiles = np.round(self.base_quantiles, 3)
-
-    def estimate_pdf(self, qts_temp):
-        mu, std = norm.fit(qts_temp)
-        pdf = norm(mu, std)
-        return pdf
+    
+    def sample_from_quantiles(self, quantile_val, quantile_bounds):
+        sample_point = random.random()
+        for i, quant in enumerate(quantile_bounds):
+            if sample_point<quant:
+                if i == 0:
+                    return quantile_val[0]
+                else:
+                    diff_val = quantile_val[i]-quantile_val[i-1]
+                    diff_quant = quantile_bounds[i]-quantile_bounds[i-1]
+                    diff_sample = sample_point-quantile_bounds[i-1]
+                    value_point = quantile_val[i-1]+diff_sample*diff_val/diff_quant
+                    return value_point
+    
+        return quantile_val[-1]
 
     def generate_next_step(self, id_param, last_param = False):
+        quantile_bounds = self.qts_model.quantiles
         if last_param == False:
-            pdf = self.estimate_pdf(self.qts_model.forecast_next_step_for_B(id_param))
+            quantile_values = self.qts_model.forecast_next_step_for_B(id_param)
         else:
-            pdf = self.estimate_pdf(self.qts_model.forecast_next_step_for_B(id_param, last_param))
-        sample_temp = pdf.rvs(1)
+            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, last_param)
+            
+        sample_temp = self.sample_from_quantiles(quantile_values, quantile_bounds)
         return sample_temp
 
     def swap_levels(self, lst):
