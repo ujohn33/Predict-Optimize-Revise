@@ -54,8 +54,8 @@ class Scenario_Generator:
 
     def generate_scenarios(self, prev_steps, current_step, horizon=24):
         scenarios = []
-        for i in range(self.n_buildings):
-            scens_B_temp = self.generate_scenarios_for_B(self.type, i, prev_steps, current_step, horizon)
+        for b in range(self.n_buildings):
+            scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)
             scenarios.append(scens_B_temp)
             # plot a list of lists with the same length and range on the x-axis
             for scen in scenarios:
@@ -90,7 +90,7 @@ class Scenario_Generator:
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
         sample = False
-        for i in range(1, horizon):
+        for i in range(horizon):
             sample = self.generate_next_step(id_param= id_param, last_param = sample)
             scenario[i] = sample
         return scenario
@@ -118,7 +118,7 @@ class Scenario_Generator:
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
-        for i in range(1, horizon):
+        for i in range(horizon):
             scenario[i] = self.qts_model.get_point_forecast_step(step=i, id=id_param)
         #self.plot_scenario(scenario)
         return list(scenario)
@@ -128,7 +128,7 @@ class Scenario_Generator:
         variances = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
-        for i in range(1, horizon):
+        for i in range(horizon):
             scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i, id=id_param)
         # add uncertainty to the point forecast
         return scenario, variances
