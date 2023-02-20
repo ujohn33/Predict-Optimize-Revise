@@ -109,7 +109,7 @@ class Scenario_Generator:
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
         sample = False
-        for i in range(1, horizon):
+        for i in range(horizon):
             sample = self.generate_next_step(id_param= id_param, last_param = sample)
             scenario[i] = sample
         return scenario
@@ -137,7 +137,7 @@ class Scenario_Generator:
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
-        for i in range(1, horizon):
+        for i in range(horizon):
             scenario[i] = self.qts_model.get_point_forecast_step(step=i, id=id_param)
         #self.plot_scenario(scenario)
         return list(scenario)
@@ -147,7 +147,7 @@ class Scenario_Generator:
         variances = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
-        for i in range(1, horizon):
+        for i in range(horizon):
             scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i, id=id_param)
         # add uncertainty to the point forecast
         return scenario, variances
