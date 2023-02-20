@@ -107,4 +107,4 @@ def evaluate(total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    evaluate()
+    evaluate(48)
