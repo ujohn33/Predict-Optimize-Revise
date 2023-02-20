@@ -30,6 +30,7 @@ class Scenario_Generator:
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
         # round to 3 decimals
         self.base_quantiles = np.round(self.base_quantiles, 3)
+        self.logger = None
     
     def sample_from_quantiles(self, quantile_val, quantile_bounds):
         sample_point = random.random()
@@ -50,6 +51,10 @@ class Scenario_Generator:
         quantile_bounds = self.qts_model.quantiles
         if last_param == False:
             quantile_values = self.qts_model.forecast_next_step_for_B(id_param)
+            if self.logger is not None:
+                time_step = self.qts_model.time_step
+                build_num = id_param
+                self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
         else:
             quantile_values = self.qts_model.forecast_next_step_for_B(id_param, last_param)
             
@@ -67,13 +72,14 @@ class Scenario_Generator:
 
     def generate_scenarios(self, prev_steps, current_step, horizon=24):
         scenarios = []
-        for i in range(self.n_buildings):
-            scens_B_temp = self.generate_scenarios_for_B(self.type, i, prev_steps, current_step, horizon)
+        for b in range(self.n_buildings):
+            scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)
             scenarios.append(scens_B_temp)
             # plot a list of lists with the same length and range on the x-axis
             for scen in scenarios:
                 for i in range(len(scen)):
                     if self.debugger_is_active:
+                        plt.title("")
                         plt.plot(scen[i])
         if self.debugger_is_active:
             plt.show()

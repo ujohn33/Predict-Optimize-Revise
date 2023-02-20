@@ -1,5 +1,10 @@
 import numpy as np
 import time
+from agents.general_agent import GeneralAgent
+from ems.logger_manager import LoggerManager
+from ems.mpc import MPC
+from forecast.scenarios import Scenario_Generator
+from forecast.perfect import PerfectForecast, PerfectRealForecast, RealForecast
 from utils.logger import log_usefull
 """
 Please do not make changes to this file. 
@@ -34,12 +39,12 @@ def env_reset(env):
                 "observation": observations }
     return obs_dict
 
-def evaluate(total_steps=9000, phase_num = 1):
+def evaluate(agent_used, total_steps=9000, phase_num = 1):
     print("Starting local evaluation")
     
     schema_path = f'./data/citylearn_challenge_2022_phase_{phase_num}/schema.json'
     env = CityLearnEnv(schema=schema_path)
-    agent = OrderEnforcingAgent()
+    agent = OrderEnforcingAgent(agent_used)
 
     obs_dict = env_reset(env)
 
@@ -107,4 +112,18 @@ def evaluate(total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    evaluate(48)
+    case_study = "point_real_time"
+    if case_study == "point_real_time":
+        scenario_gen = Scenario_Generator(type = 'point', n_scenarios =1)
+        manager = MPC(0)
+    elif case_study == "realistic_file_forec":
+        scenario_gen = RealForecast()
+        manager = MPC(0)
+    elif case_study == "logging_recur_guassian":
+        scenario_gen = Scenario_Generator(type = 'recurrent_gaussian_qts', n_scenarios =5)
+        logger = LoggerManager()
+        manager = logger
+        scenario_gen.logger = logger
+    
+    agent_used = GeneralAgent(scenario_gen, manager)
+    evaluate(agent_used)

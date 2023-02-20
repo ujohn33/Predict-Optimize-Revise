@@ -1,6 +1,4 @@
 from gym.spaces import Box
-from agents.user_agent import UserAgent
-from agents.mpc_agent import MPCAgent
 from rewards.user_reward import UserReward
 
 
@@ -18,9 +16,9 @@ class OrderEnforcingAgent:
     Calls each agent step with agent in a loop and returns the action
     """
 
-    def __init__(self):
+    def __init__(self, agent):
         self.num_buildings = None
-        self.agent = MPCAgent()
+        self.agent = agent
         self.action_space = None
 
     def register_reset(self, observation):
