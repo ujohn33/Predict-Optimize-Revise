@@ -138,6 +138,7 @@ class Scenario_Generator:
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
         for i in range(horizon):
             scenario[i] = self.qts_model.get_point_forecast_step(step=i+1, id=id_param)
         #self.plot_scenario(scenario)

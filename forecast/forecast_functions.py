@@ -130,6 +130,14 @@ class Forecast:
     def update_current_step(self, current_step):
         self.time_step = current_step
 
+    def update_min_max_scaler(self, id):
+        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+            self.prev_steps[f"solar_generation_{id}"][-1]
+        )
+        self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
+        self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
+
+
     def forecast_next_step_for_B(self, id: int, last_param=False, step=1):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
         #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
@@ -254,11 +262,6 @@ class Forecast:
                         lag_val = self.prev_steps[f"non_shiftable_load_{id}"][
                             lag_step
                         ] - (self.prev_steps[f"solar_generation_{id}"][lag_step])
-                        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
-                            self.prev_steps[f"solar_generation_{id}"][-1]
-                        )
-                        self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
-                        self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
                         norm_val = self.min_max_normalize(
                             lag_val, self.net_min_dict[id], self.net_max_dict[id]
                         )
