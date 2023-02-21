@@ -308,6 +308,7 @@ class Forecast:
                     X[i] = np.sin(2 * np.pi * self.prev_steps["month"][-1] / 12)
                 elif key in self.prev_steps.keys():
                     X[i] = self.prev_steps[key][-1]
+            #print(X)
             # add a value to a prediction vector
             forec = self.model_pt.predict(X.reshape(1, -1))
             # denormalize the values
@@ -315,6 +316,7 @@ class Forecast:
                 forec, self.net_min_dict[id], self.net_max_dict[id]
             )
             forec = forec[0]
+            #print(forec)
             return forec
 
 
