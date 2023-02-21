@@ -9,9 +9,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class MPC(Manager):
-    def __init__(self, fixed_steps):
+    def __init__(self, fixed_steps, log_files = False):
         super().__init__()
-        
+        self.log_files = log_files
         self.fixed_steps = fixed_steps
         self.file_name = "debug_logs/mpc_debug"
 
@@ -39,8 +39,10 @@ class MPC(Manager):
 
         soc_init = [observation[i][22] * batt_capacity[i] for i in range(num_buildings)]
 
-        last_step = [observation[i][23] for i in range(num_buildings)]
-        last_step_sum = sum(last_step)
+        last_step_nobatt = [observation[i][20] for i in range(num_buildings)]
+        last_step_batt = [observation[i][23] for i in range(num_buildings)]
+        last_step_nobatt_sum = sum(last_step_nobatt)
+        last_step_batt_sum = sum(last_step_batt)
 
         price_cost = [self.price_df[(time_step+1 + i) % 8760] for i in range(horizon)]
 
@@ -52,7 +54,7 @@ class MPC(Manager):
         base_carb = list()
 
         for i in range(num_scenarios):
-            forec_last_st = [last_step_sum] + forec_step_sum[i]
+            forec_last_st = [last_step_batt_sum] + forec_step_sum[i]
 
             base_carb_cost = 0
             for j in range(num_buildings):
@@ -106,11 +108,11 @@ class MPC(Manager):
         grid_abs_2_level = grid_abs_1_level + num_grid_abs_1
 
         # Objective function First 3 variables is value used for each cost
-        obj_func = [0 for _ in range(num_var)]
+        obj_func = np.zeros((num_var,), dtype=float)
         for i in range(num_scenarios):
-            obj_func[i * 3] = 1 / base_carb[i]
-            obj_func[i * 3 + 1] = 1 / base_price[i]
-            obj_func[i * 3 + 2] = 1 / base_grid[i]/2
+            obj_func[i * 3] = 1 / base_carb[i]/3
+            obj_func[i * 3 + 1] = 1 / base_price[i]/3
+            obj_func[i * 3 + 2] = 1 / base_grid[i]/6
 
         # Set carbon cost to be positive
         # forall s,b,t batt_power[s,b,t]-carb_pow[s,b,t]/carb_cost[t]<=-baseload[s,b,t]
@@ -221,7 +223,7 @@ class MPC(Manager):
             for k in range(horizon):
                 cur_constr = np.zeros((num_var,), dtype=float)
                 if k == 0:
-                    equal_constr = forec_step_sum[i][k] - last_step_sum
+                    equal_constr = forec_step_sum[i][k] - last_step_batt_sum
                 else:
                     equal_constr = forec_step_sum[i][k] - forec_step_sum[i][k - 1]
 
@@ -366,23 +368,21 @@ class MPC(Manager):
             action = res.x[num_obj + i*fixed_steps]/batt_capacity[i]
             actions.append([action])
         
-        ### Debug
-        #base_costs = {"base_carb":base_carb[0],
-        #"base_price":base_price[0],
-        #"base_grid":base_grid[0]
-        #}
-        #log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs)
-        #powers = [val[0]*batt_capacity[i] for i, val in enumerate(actions)]
-        #print(f"step_{time_step}_{powers}")
-        ### End debug
+        fun_score = res.fun + 1/6
+        if self.log_files and fun_score>1:
+            ### Debug
+            base_costs = {"base_carb":base_carb[0],
+            "base_price":base_price[0],
+            "base_grid":base_grid[0]
+            }
+            log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs)
+            powers = [val[0]*batt_capacity[i] for i, val in enumerate(actions)]
+            ### End debug
         
         return np.array(actions)
 
 def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_costs):
     
-    if time_step%1000 !=0:
-        return
-    print("Logged mpc")
     file_pow = f"{file_name}_pow_{time_step}.csv"
     num_scenarios = len(forec_scenarios)
     num_buildings = len(forec_scenarios[0])
