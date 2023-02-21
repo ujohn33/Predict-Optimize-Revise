@@ -81,6 +81,7 @@ class Scenario_Generator:
                     if self.debugger_is_active:
                         plt.title("")
                         plt.plot(scen[i])
+                        #print(scen[i])
         if self.debugger_is_active:
             plt.show()
         scenarios = self.swap_levels(scenarios)
@@ -125,7 +126,7 @@ class Scenario_Generator:
             # find the indexes of the quantiles in the list of base quantiles
             quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
             for i_step in range(horizon):
-                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step)
+                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
                 qts_final[i_step, :] = qts_temp[quantile_indexes]
         else:
             print('Number of scenarios should be less than 20')
@@ -135,8 +136,9 @@ class Scenario_Generator:
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
         for i in range(horizon):
-            scenario[i] = self.qts_model.get_point_forecast_step(step=i, id=id_param)
+            scenario[i] = self.qts_model.get_point_forecast_step(step=i+1, id=id_param)
         #self.plot_scenario(scenario)
         return list(scenario)
 
@@ -146,7 +148,7 @@ class Scenario_Generator:
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
         for i in range(horizon):
-            scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i, id=id_param)
+            scenario[i], variances[i]  = self.qts_model.get_point_and_variance(step=i+1, id=id_param)
         # add uncertainty to the point forecast
         return scenario, variances
 

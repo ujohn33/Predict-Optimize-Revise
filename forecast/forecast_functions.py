@@ -30,6 +30,7 @@ class Forecast:
         self.init_forecast()
         if point_forecast:
             self.model_pt = joblib.load(model_dir+"lgb_point_step_24.pkl")
+            self.model_pt_next = joblib.load(model_dir+"lgb_next_step.pkl")
         else:
             for qt in self.quantiles:
                 # read an lgb model in a txt file
@@ -128,6 +129,14 @@ class Forecast:
 
     def update_current_step(self, current_step):
         self.time_step = current_step
+
+    def update_min_max_scaler(self, id):
+        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+            self.prev_steps[f"solar_generation_{id}"][-1]
+        )
+        self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
+        self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
+
 
     def forecast_next_step_for_B(self, id: int, last_param=False, step=1):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
@@ -235,7 +244,10 @@ class Forecast:
             # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
             #  'net_target-23', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
             #   'relative_humidity+1', 'drybulb_temp+1']
-            columnames = self.model_pt.feature_name()
+            if step == 1:
+                columnames = self.model_pt_next.feature_name()
+            else:
+                columnames = self.model_pt.feature_name()
             # rename items in the list according to a dict
             X_order = [self.renamer.get(x, x) for x in columnames]
             # make a vector of last values from prev steps using keys from X_order
@@ -243,18 +255,43 @@ class Forecast:
             # print(self.time_step)
             for i, key in enumerate(X_order):
                 # if key starts with net_target
-                if key.startswith("net_target-"):
+                if key == "net_target-23":
                     lag_step = 24 - step
                     if self.time_step > lag_step:
                         lag_step = -lag_step - 1
-                        last_val = self.prev_steps[f"non_shiftable_load_{id}"][
+                        lag_val = self.prev_steps[f"non_shiftable_load_{id}"][
                             lag_step
                         ] - (self.prev_steps[f"solar_generation_{id}"][lag_step])
                         norm_val = self.min_max_normalize(
-                            last_val, self.net_min_dict[id], self.net_max_dict[id]
+                            lag_val, self.net_min_dict[id], self.net_max_dict[id]
                         )
                     else:
                         norm_val = np.nan
+                    X[i] = norm_val
+                elif key == "net_target_diff":
+                    if self.time_step > 2:
+                        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+                            self.prev_steps[f"solar_generation_{id}"][-1]
+                        ) 
+                        last_last_val = self.prev_steps[f"non_shiftable_load_{id}"][-2] - (
+                            self.prev_steps[f"solar_generation_{id}"][-2]
+                        )
+                        norm_val = self.min_max_normalize(
+                            last_val, self.net_min_dict[id], self.net_max_dict[id]
+                        )
+                        norm_last_val = self.min_max_normalize(
+                            last_last_val, self.net_min_dict[id], self.net_max_dict[id]
+                        )
+                        X[i] = norm_val - norm_last_val
+                    else:
+                        X[i] = np.nan
+                elif key == "net_target":
+                    last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+                        self.prev_steps[f"solar_generation_{id}"][-1]
+                    )
+                    norm_val = self.min_max_normalize(
+                        last_val, self.net_min_dict[id], self.net_max_dict[id]
+                    )
                     X[i] = norm_val
                 elif key.startswith("diffuse_solar_radiation+"):
                     step_back = -(25 - step)
@@ -293,14 +330,14 @@ class Forecast:
                         last_val = np.nan
                     X[i] = last_val
                 elif key == "hour":
-                    X[i] = (self.prev_steps["hour"][-1] + step) % 24
+                    X[i] = (self.prev_steps["hour"][-1] + step -1) % 24
                 elif key == "hour_x":
                     X[i] = np.cos(
-                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step -1) % 24) / 24
                     )
                 elif key == "hour_y":
                     X[i] = np.sin(
-                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step -1) % 24) / 24
                     )
                 elif key == "month_x":
                     X[i] = np.cos(2 * np.pi * self.prev_steps["month"][-1] / 12)
@@ -308,15 +345,21 @@ class Forecast:
                     X[i] = np.sin(2 * np.pi * self.prev_steps["month"][-1] / 12)
                 elif key in self.prev_steps.keys():
                     X[i] = self.prev_steps[key][-1]
-            # add a value to a prediction vector
-            forec = self.model_pt.predict(X.reshape(1, -1))
+            #print(X)
+            if step == 1:
+                # add a value to a prediction vector
+                forec = self.model_pt_next.predict(X.reshape(1, -1))
+            else:
+                # add a value to a prediction vector
+                forec = self.model_pt.predict(X.reshape(1, -1))
+            #forec = self.model_pt.predict(X.reshape(1, -1))
             # denormalize the values
             forec = self.min_max_denormalize(
                 forec, self.net_min_dict[id], self.net_max_dict[id]
             )
             forec = forec[0]
+            #print(forec)
             return forec
-
 
     def get_point_and_variance(self, step: int, id: int):
         forec = self.get_point_forecast_step(step, id)
