@@ -13,19 +13,20 @@ def debugger_is_active() -> bool:
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
 
 class Scenario_Generator:
-    def __init__(self, type='norm', n_scenarios=10, n_buildings=5):
+    def __init__(self, type='norm', n_scenarios=10, n_buildings=5, steps_ahead=24):
         self.type = type
         self.n_scenarios = n_scenarios
         self.n_buildings = n_buildings
+        self.steps_ahead = steps_ahead
         self.debugger_is_active = debugger_is_active()
         if type == 'recurrent_gaussian_qts':
-            self.qts_model = Forecast(5, model_dir='models/lag_minus_1/')
+            self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_1/')
         elif type == 'quantiles':
-            self.qts_model = Forecast(5, model_dir='models/lag_minus_24/')
+            self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_24/')
         elif type == 'point':
-            self.qts_model = Forecast(5, model_dir='models/point/', point_forecast=True)
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
         elif type == 'point_and_variance':
-            self.qts_model = Forecast(5, model_dir='models/point/', point_forecast=True)    
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)    
         self.scenarios = []
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
         # round to 3 decimals
@@ -70,7 +71,8 @@ class Scenario_Generator:
         quantile_samples = np.linspace(start, end, num=num_quantiles)
         return quantile_samples
 
-    def generate_scenarios(self, prev_steps, current_step, horizon=24):
+    def generate_scenarios(self, prev_steps, current_step):
+        horizon = self.steps_ahead
         scenarios = []
         for b in range(self.n_buildings):
             scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)

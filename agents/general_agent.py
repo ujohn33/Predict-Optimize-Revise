@@ -25,7 +25,7 @@ class GeneralAgent:
         """Get observation return action"""
         self.populate_prev_steps(observation)
 
-        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step, 24)
+        forec_scenarios = self.scenario_gen.generate_scenarios(self.prev_steps, self.time_step)
 
         actions = self.manager.calculate_powers(
            observation, forec_scenarios, self.time_step
