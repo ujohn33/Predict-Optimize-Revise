@@ -42,8 +42,8 @@ class LoggerManager(Manager):
                 scen_file.write(line)
         scen_file.close()
 
-
-        last_step = [observation[i][23] for i in range(num_buildings)]
+        # Log last step without use of battery
+        last_step = [observation[i][20] for i in range(num_buildings)]
         real_val_file = open(self.real_val_filename,"a+")
         
         line_start = f"{time_step-1},"

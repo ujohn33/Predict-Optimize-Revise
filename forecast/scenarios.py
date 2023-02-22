@@ -97,8 +97,6 @@ class Scenario_Generator:
         if type == 'recurrent_gaussian_qts':
             for i in range(self.n_scenarios):
                 scenarios_B.append(self.recurrent_gaussian(prev_steps, current_step, id_param, horizon))
-                print('Scenario {} generated'.format(i+1))
-            print('All scenarios generated')
         elif type == 'quantiles':
             scenarios_B = self.quantiles(prev_steps, current_step, id_param, horizon)
         elif type == 'point':

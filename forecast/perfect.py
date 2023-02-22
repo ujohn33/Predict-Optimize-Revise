@@ -46,11 +46,14 @@ class PerfectRealForecast:
         return [forec_perf, forec_real]
 
 class RealForecast:
-    def __init__(self):
+    def __init__(self, steps_ahead=24):
         consum_file = "data/citylearn_challenge_2022_phase_1/net_minmax_preds.csv"
+        preds_file = "data/citylearn_challenge_2022_phase_1/24h_pred.csv"
         self.df_forec = pd.read_csv(consum_file).to_dict("list")
+        self.steps_ahead = steps_ahead
 
     def generate_scenarios(self, prev_steps, time_step, steps_ahead=24):
+        steps_ahead = self.steps_ahead
         num_buildings = 5
 
         init_ind = time_step
