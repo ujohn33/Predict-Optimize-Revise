@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
+from forecast.metrics import crps_ensemble, energy_score
 import random
 
 def debugger_is_active() -> bool:
@@ -157,3 +158,5 @@ class Scenario_Generator:
     def plot_scenario(self, scenario: list):
         plt.plot(range(len(scenario)), scenario)
         #plt.show()
+
+    
