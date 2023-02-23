@@ -10,6 +10,7 @@ class Forecast:
         self.num_buildings = n_build
         self.pv_capacity = [4.0, 4.0, 4.0, 5.0, 4.0]
         self.quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
+        self.quantiles = np.round(self.quantiles, 3)
         self.prev_steps = {}
         self.model_dict = {}
         self.renamer = {"Month": "month", "Hour": "hour"}
@@ -34,7 +35,7 @@ class Forecast:
         else:
             for qt in self.quantiles:
                 # read an lgb model in a txt file
-                self.model_dict[qt] = lgb.Booster(model_file=model_dir+"lgb_{}.txt".format(qt.round(3)))
+                self.model_dict[qt] = lgb.Booster(model_file=model_dir+"lgb_{}.txt".format(qt))
 
     def init_forecast(self):
         # look-up varinance for each hour and month and save it to a dict
@@ -152,7 +153,7 @@ class Forecast:
         for qt_cnt, qt in enumerate(self.quantiles):
             for i, key in enumerate(X_order):
                 # if key starts with net_target
-                if key == "net_target-1":
+                if key == "net_target":
                     if last_param == False:
                         last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
                             self.prev_steps[f"solar_generation_{id}"][-1]
@@ -232,6 +233,8 @@ class Forecast:
                     X[i] = self.prev_steps[key][-1]
             # add a value to a prediction vector
             forec[qt_cnt] = self.model_dict[qt].predict(X.reshape(1, -1))
+            if self.time_step > 24:
+                print('hi')
             # denormalize the values
             forec[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
