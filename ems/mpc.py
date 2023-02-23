@@ -22,6 +22,8 @@ class MPC(Manager):
         horizon = len(forec_scenarios[0][0])
 
         batt_capacity = [6.4 for i in range(num_buildings)]
+        batt_efficiency = 0.91104
+        max_power = 5
 
         if self.fixed_steps == 0:
             fixed_steps = horizon
@@ -85,8 +87,10 @@ class MPC(Manager):
 
         non_fixed_steps = horizon - fixed_steps
         num_obj = 3 * num_scenarios  # Positive
-        num_fixed = fixed_steps * num_buildings  # Real
-        num_mult = non_fixed_steps * num_scenarios * num_buildings  # Real
+        num_fixed_pos = fixed_steps * num_buildings  # Positive
+        num_fixed_neg = fixed_steps * num_buildings  # Negative
+        num_mult_pos = non_fixed_steps * num_scenarios * num_buildings  # Positive
+        num_mult_neg = non_fixed_steps * num_scenarios * num_buildings  # Negative
         num_carb_pow = horizon * num_scenarios * num_buildings  # Positive
         num_price_pow = horizon * num_scenarios  # Positive
         num_grid_abs_1 = horizon * num_scenarios  # Positive
@@ -94,15 +98,20 @@ class MPC(Manager):
 
         num_var = (
             num_obj
-            + num_fixed
-            + num_mult
+            + num_fixed_pos
+            + num_fixed_neg
+            + num_mult_pos
+            + num_mult_neg
             + num_carb_pow
             + num_price_pow
             + num_grid_abs_1
             + num_grid_abs_2
         )
-        mult_level = num_obj + num_fixed
-        carb_level = mult_level + num_mult
+        fixed_pos_level = num_obj
+        fixed_neg_level = fixed_pos_level+num_fixed_pos
+        mult_pos_level = fixed_neg_level+num_fixed_neg
+        mult_neg_level = mult_pos_level+num_mult_pos
+        carb_level = mult_neg_level + num_mult_neg
         price_level = carb_level + num_carb_pow
         grid_abs_1_level = price_level + num_price_pow
         grid_abs_2_level = grid_abs_1_level + num_grid_abs_1
@@ -128,17 +137,17 @@ class MPC(Manager):
 
                     # Select battery power
                     if k < fixed_steps:
-                        var_ind = num_obj + j * fixed_steps + k
+                        fixed_incr =  j * fixed_steps + k
+                        var_ind = fixed_pos_level +fixed_incr
+                        cur_constr[var_ind] = 1
+                        var_ind = fixed_neg_level + fixed_incr
                         cur_constr[var_ind] = 1
                     else:
                         ind_to_add = k - fixed_steps
-                        var_ind = (
-                            mult_level
-                            + i * num_buildings * non_fixed_steps
-                            + j * non_fixed_steps
-                            + ind_to_add
-                        )
-
+                        mult_incr = i * num_buildings * non_fixed_steps+ j * non_fixed_steps+ ind_to_add
+                        var_ind = mult_pos_level+mult_incr
+                        cur_constr[var_ind] = 1
+                        var_ind = mult_neg_level+mult_incr
                         cur_constr[var_ind] = 1
 
                     # Select positive carbon value and divide by the carbon costs
@@ -178,17 +187,19 @@ class MPC(Manager):
                 for j in range(num_buildings):
                     # Select the battery power
                     if k < fixed_steps:
-                        var_ind = num_obj + j * fixed_steps + k
+                        fixed_incr =  j * fixed_steps + k
+                        var_ind = fixed_pos_level +fixed_incr
+                        cur_constr[var_ind] = 1
+                        var_ind = fixed_neg_level + fixed_incr
                         cur_constr[var_ind] = 1
                     else:
                         ind_to_add = k - fixed_steps
-                        var_ind = (
-                            mult_level
-                            + i * num_buildings * non_fixed_steps
-                            + j * non_fixed_steps
-                            + ind_to_add
-                        )
-                    cur_constr[var_ind] = 1
+                        mult_incr = i * num_buildings * non_fixed_steps+ j * non_fixed_steps+ ind_to_add
+                        var_ind = mult_pos_level+mult_incr
+                        cur_constr[var_ind] = 1
+                        var_ind = mult_neg_level+mult_incr
+                        cur_constr[var_ind] = 1
+                    
                 # Select positive price value and divide by the price costs
                 var_ind = price_level + i * horizon + k
                 cur_constr[var_ind] = -1 / price_cost[k]
@@ -228,30 +239,34 @@ class MPC(Manager):
                     equal_constr = forec_step_sum[i][k] - forec_step_sum[i][k - 1]
 
                 for j in range(num_buildings):
+                    
+                    fixed_incr = j * fixed_steps + k
+
+                    ind_to_add = k - fixed_steps
+                    mult_incr = i * non_fixed_steps * num_buildings + j * non_fixed_steps + ind_to_add
                     if k < fixed_steps:
-                        prev_batt_pow_ind = num_obj + j * fixed_steps + k - 1
-                        batt_pow_ind = num_obj + j * fixed_steps + k
+                        prev_batt_pow_pos_ind = fixed_pos_level+fixed_incr - 1
+                        prev_batt_pow_neg_ind = fixed_neg_level+fixed_incr-1
+                        batt_pow_pos_ind = fixed_pos_level + fixed_incr
+                        batt_pow_neg_ind = fixed_neg_level + fixed_incr
                     elif k == fixed_steps:
-                        prev_batt_pow_ind = num_obj + j * fixed_steps + k - 1
-                        ind_to_add = k - fixed_steps
-                        batt_pow_ind = (
-                            mult_level + i * non_fixed_steps * num_buildings + j * non_fixed_steps + ind_to_add
-                        )
+                        
+                        prev_batt_pow_pos_ind = fixed_pos_level+fixed_incr - 1
+                        prev_batt_pow_neg_ind = fixed_neg_level+fixed_incr-1
+
+                        batt_pow_pos_ind = mult_pos_level + mult_incr
+                        batt_pow_neg_ind = mult_neg_level + mult_incr
                     else:
-                        ind_to_add = k - fixed_steps
-                        prev_batt_pow_ind = (
-                            mult_level
-                            + i * non_fixed_steps * num_buildings
-                            + j * non_fixed_steps
-                            + ind_to_add
-                            - 1
-                        )
-                        batt_pow_ind = (
-                            mult_level + i * non_fixed_steps * num_buildings + j * non_fixed_steps + ind_to_add
-                        )
+                        prev_batt_pow_pos_ind = mult_pos_level+mult_incr - 1
+                        prev_batt_pow_neg_ind = mult_neg_level+mult_incr-1
+
+                        batt_pow_pos_ind = mult_pos_level + mult_incr
+                        batt_pow_neg_ind = mult_neg_level + mult_incr
                     if k != 0:
-                        cur_constr[prev_batt_pow_ind] = 1
-                    cur_constr[batt_pow_ind] = -1
+                        cur_constr[prev_batt_pow_pos_ind] = 1
+                        cur_constr[prev_batt_pow_neg_ind] = 1
+                    cur_constr[batt_pow_pos_ind] = -1
+                    cur_constr[batt_pow_neg_ind] = -1
 
                 abs1_ind = grid_abs_1_level + i * horizon + k
                 abs2_ind = grid_abs_2_level + i * horizon + k
@@ -285,8 +300,8 @@ class MPC(Manager):
         # for all s,b,t 0<=soc_init[b]+(batt_power[s,b,0]+...+batt_power[s,b,t]<=6.4
         # (batt_power[s,b,0]+...+batt_power[s,b,t]<=6.4-soc_init
         # -(batt_power[s,b,0]+...+batt_power[s,b,t])<=soc_init[b]
-
         # -soc_init[b]-(batt_power[s,b,0]+...+batt_power[s,b,t])<=0
+        # !!! Added efficiency to power after comment
         soc_low_constr_ub = list()
         soc_low_equal_ub = list()
 
@@ -300,18 +315,20 @@ class MPC(Manager):
                     cur_constr_high = np.zeros((num_var,), dtype=float)
                     for l in range(k+1):
                         if l < fixed_steps:
-                            var_ind = num_obj + j * fixed_steps + l
+                            fixed_incr = j * fixed_steps + l
+                            var_ind_pos = fixed_pos_level + fixed_incr
+                            var_ind_neg = fixed_neg_level + fixed_incr
                         else:
                             ind_to_add = l - fixed_steps
-                            var_ind = (
-                                mult_level
-                                + i * non_fixed_steps * num_buildings
-                                + j * non_fixed_steps
-                                + ind_to_add
-                            )
+                            mult_incr = i * non_fixed_steps * num_buildings+ j * non_fixed_steps+ ind_to_add
+                            
+                            var_ind_pos = mult_pos_level+mult_incr
+                            var_ind_neg = mult_neg_level+mult_incr
 
-                        cur_constr_low[var_ind] = -1
-                        cur_constr_high[var_ind] = 1
+                        cur_constr_low[var_ind_pos] = -batt_efficiency
+                        cur_constr_low[var_ind_neg] = -1/batt_efficiency
+                        cur_constr_high[var_ind_pos] = batt_efficiency
+                        cur_constr_high[var_ind_neg] = 1/batt_efficiency
 
                     equal_constr_low = soc_init[j]
                     equal_constr_high = batt_capacity[j] - soc_init[j]
@@ -345,7 +362,10 @@ class MPC(Manager):
 
         bounds = (
             [(0, None) for _ in range(num_obj)]
-            + [(None, None) for _ in range(num_fixed + num_mult)]
+            + [(0, max_power) for _ in range(num_fixed_pos)]
+            +[(-max_power, 0) for _ in range(num_fixed_neg)]
+            +[(0, None) for _ in range(num_mult_pos)]
+            +[(None, 0) for _ in range(num_mult_neg)]
             + [(0, None) for _ in range(rest_positive)]
         )
 
@@ -365,23 +385,23 @@ class MPC(Manager):
         # print(res)
         actions = list()
         for i in range(num_buildings):
-            action = res.x[num_obj + i*fixed_steps]/batt_capacity[i]
+            action = (res.x[fixed_pos_level + i*fixed_steps]+res.x[fixed_neg_level + i*fixed_steps])/batt_capacity[i]
+
             actions.append([action])
         
         fun_score = res.fun + 1/6
-        if self.log_files and fun_score>1:
+        if self.log_files:
             ### Debug
             base_costs = {"base_carb":base_carb[0],
             "base_price":base_price[0],
             "base_grid":base_grid[0]
             }
-            log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs)
+            log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs,fixed_neg_level)
             powers = [val[0]*batt_capacity[i] for i, val in enumerate(actions)]
             ### End debug
-        
         return np.array(actions)
 
-def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_costs):
+def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_costs, fixed_neg_level):
     
     file_pow = f"{file_name}_pow_{time_step}.csv"
     num_scenarios = len(forec_scenarios)
@@ -395,7 +415,8 @@ def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_c
 
     for i in range(horizon):
         base_loads = [forec_scenarios[0][j][i] for j in range(num_buildings)]
-        total_load = [base_loads[j]+result[num_scenarios*3+horizon*j+i] for j in range(num_buildings)]
+        
+        total_load = [base_loads[j]+result[num_scenarios*3+horizon*j+i]+result[fixed_neg_level+horizon*j+i] for j in range(num_buildings)]
         sum_loads = [sum(base_loads),sum(total_load)]
 
         list_line = [str(j) for j in base_loads+total_load+sum_loads]
