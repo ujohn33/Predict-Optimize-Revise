@@ -102,7 +102,14 @@ class Scenario_Generator:
         elif type == 'point_and_variance':
             sceni, vari = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
             for i in range(self.n_scenarios):
-                scenarios_B.append(sceni + np.random.normal(0, vari, horizon))
+                scenario = sceni + np.random.normal(0, vari, horizon)
+                scenarios_B.append(scenario)
+                if self.logger is not None:
+                    quantile_bounds = self.base_quantiles
+                    quantile_values = norm.ppf(quantile_bounds,sceni[0], vari[0])
+                    time_step = self.qts_model.time_step
+                    build_num = id_param
+                    self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
         return scenarios_B
 
 
