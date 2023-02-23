@@ -112,9 +112,9 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    case_study = "point_real_time"
+    case_study = "logging"
     phase_num = 1
-    total_steps = 1000
+    total_steps = 200
     if phase_num == 3:
         n_buildings = 7
     else:
