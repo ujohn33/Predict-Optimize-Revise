@@ -113,7 +113,8 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
 
 if __name__ == '__main__':
     case_study = "point_real_time"
-    phase_num = 3
+    phase_num = 1
+    total_steps = 1000
     if phase_num == 3:
         n_buildings = 7
     else:
@@ -127,11 +128,13 @@ if __name__ == '__main__':
     elif case_study == "perfect_file_forec":
         scenario_gen = PerfectForecast()
         manager = MPC(0)
-    elif case_study == "logging_recur_guassian":
-        scenario_gen = Scenario_Generator(type = 'recurrent_gaussian_qts', n_scenarios =1, steps_ahead=2,n_buildings=n_buildings)
-        logger = LoggerManager()
+    elif case_study == "logging":
+        type_forec = 'recurrent_gaussian_qts'
+        param = f"{type_forec}_{total_steps}"
+        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios =2, steps_ahead=2,n_buildings=n_buildings)
+        logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
     
     agent_used = GeneralAgent(scenario_gen, manager)
-    evaluate(agent_used, total_steps=9000,phase_num=phase_num)
+    evaluate(agent_used, total_steps=total_steps,phase_num=phase_num)

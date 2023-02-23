@@ -4,12 +4,13 @@ else:
     from ems.manager import Manager
 
 class LoggerManager(Manager):
-    def __init__(self):
+    def __init__(self, param=""):
+        
         super().__init__()
         self.quantiles_done = {"time_step":-1, "building":-1}
-        self.scen_filename = "debug_logs/scenarios.csv"
-        self.quant_filename = "debug_logs/quant_next_step.csv"
-        self.real_val_filename = "debug_logs/real_power.csv"
+        self.scen_filename = f"debug_logs/scenarios_{param}.csv"
+        self.quant_filename = f"debug_logs/quant_next_step_{param}.csv"
+        self.real_val_filename = f"debug_logs/real_power_{param}.csv"
     
     def calculate_powers(self, observation, forec_scenarios, time_step):
         
