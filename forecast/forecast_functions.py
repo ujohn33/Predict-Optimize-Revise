@@ -233,8 +233,6 @@ class Forecast:
                     X[i] = self.prev_steps[key][-1]
             # add a value to a prediction vector
             forec[qt_cnt] = self.model_dict[qt].predict(X.reshape(1, -1))
-            if self.time_step > 24:
-                print('hi')
             # denormalize the values
             forec[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
