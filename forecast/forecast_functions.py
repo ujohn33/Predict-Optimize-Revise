@@ -129,7 +129,7 @@ class Forecast:
         self.prev_steps = prev_steps
 
     def update_current_step(self, current_step):
-        self.time_step = current_step
+        self.time_step = current_step 
 
     def update_min_max_scaler(self, id):
         last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
@@ -139,7 +139,7 @@ class Forecast:
         self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
 
 
-    def forecast_next_step_for_B(self, id: int, last_param=False, step=1):
+    def forecast_next_step_for_B(self, id: int, step, last_param=False):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
         #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
         #   'relative_humidity+1', 'drybulb_temp+1']
@@ -233,12 +233,13 @@ class Forecast:
                     X[i] = self.prev_steps[key][-1]
             # add a value to a prediction vector
             forec[qt_cnt] = self.model_dict[qt].predict(X.reshape(1, -1))
-            if self.time_step > 24:
-                print('hi')
             # denormalize the values
             forec[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
+        # if self.time_step > 23:
+        #     print('hi')
+        #     print(forec)
         #forec = [i[0] for i in forec]
         return forec
 
