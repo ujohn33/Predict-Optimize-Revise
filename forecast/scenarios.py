@@ -49,16 +49,16 @@ class Scenario_Generator:
     
         return quantile_val[-1]
 
-    def generate_next_step(self, id_param, last_param = False):
+    def generate_next_step(self, id_param, p_step, last_param = False):
         quantile_bounds = self.qts_model.quantiles
         if last_param == False:
-            quantile_values = self.qts_model.forecast_next_step_for_B(id_param)
+            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, p_step)
             if self.logger is not None:
                 time_step = self.qts_model.time_step
                 build_num = id_param
                 self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
         else:
-            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, last_param)
+            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, p_step, last_param)
             
         sample_temp = self.sample_from_quantiles(quantile_values, quantile_bounds)
         return sample_temp
@@ -119,7 +119,7 @@ class Scenario_Generator:
         self.qts_model.update_current_step(current_step)
         sample = False
         for i in range(horizon):
-            sample = self.generate_next_step(id_param= id_param, last_param = sample)
+            sample = self.generate_next_step(id_param= id_param, p_step=i, last_param = sample)
             scenario[i] = sample
         return scenario
 
