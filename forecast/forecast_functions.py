@@ -150,6 +150,7 @@ class Forecast:
         X = np.zeros(len(X_order))
         # create a vector of 5 for forecast
         forec = np.zeros(len(self.quantiles))
+        forec_denorm = np.zeros(len(self.quantiles))
         for qt_cnt, qt in enumerate(self.quantiles):
             for i, key in enumerate(X_order):
                 # if key starts with net_target
@@ -158,13 +159,13 @@ class Forecast:
                         last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
                             self.prev_steps[f"solar_generation_{id}"][-1]
                         )
+                        norm_val = self.min_max_normalize(
+                            last_val, self.net_min_dict[id], self.net_max_dict[id]
+                        )
                     else:
-                        last_val = last_param
-                    self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
-                    self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
-                    norm_val = self.min_max_normalize(
-                        last_val, self.net_min_dict[id], self.net_max_dict[id]
-                    )
+                        norm_val = self.min_max_normalize(
+                            last_param, self.net_min_dict[id], self.net_max_dict[id]
+                        )
                     X[i] = norm_val
                 elif key == "net_target-23":
                     lag_step = 24 - step
@@ -234,14 +235,19 @@ class Forecast:
             # add a value to a prediction vector
             forec[qt_cnt] = self.model_dict[qt].predict(X.reshape(1, -1))
             # denormalize the values
-            forec[qt_cnt] = self.min_max_denormalize(
+            forec_denorm[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
-        # if self.time_step > 23:
-        #     print('hi')
-        #     print(forec)
+        if self.time_step > 23:
+            if step == 1:
+                print(self.time_step)
+                print(id)
+                print('normalized:')
+                print(forec)
+                print('denormalized:')
+                print(forec_denorm)
         #forec = [i[0] for i in forec]
-        return forec
+        return forec_denorm
 
 
     def get_point_forecast_step(self, step: int, id: int):

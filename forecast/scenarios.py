@@ -117,9 +117,10 @@ class Scenario_Generator:
         scenario = np.zeros(horizon)
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
         sample = False
         for i in range(horizon):
-            sample = self.generate_next_step(id_param= id_param, p_step=i, last_param = sample)
+            sample = self.generate_next_step(id_param= id_param, p_step=i+1, last_param = sample)
             scenario[i] = sample
         return scenario
 
