@@ -41,7 +41,7 @@ class MPC(Manager):
 
         soc_init = [observation[i][22] * batt_capacity[i] for i in range(num_buildings)]
 
-        last_step_nobatt = [observation[i][20] for i in range(num_buildings)]
+        last_step_nobatt = [observation[i][20]-observation[i][21] for i in range(num_buildings)]
         last_step_batt = [observation[i][23] for i in range(num_buildings)]
         last_step_nobatt_sum = sum(last_step_nobatt)
         last_step_batt_sum = sum(last_step_batt)
