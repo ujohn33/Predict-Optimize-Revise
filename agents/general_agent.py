@@ -32,6 +32,8 @@ class GeneralAgent:
     def set_pv_capacity_and_num_buildings(self, building_info):
         self.num_buildings = len(building_info)
         self.pv_capacity = [i["solar_power"] for i in building_info]
+        if hasattr(self.scenario_gen,"qts_model"):
+            self.scenario_gen.qts_model.pv_capacity = self.pv_capacity
 
     def populate_prev_steps(self, observations):
         done_keys = list()

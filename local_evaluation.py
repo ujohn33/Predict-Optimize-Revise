@@ -4,7 +4,7 @@ from agents.general_agent import GeneralAgent
 from ems.logger_manager import LoggerManager
 from ems.mpc import MPC
 from forecast.scenarios import Scenario_Generator
-from forecast.perfect import PerfectForecast, PerfectRealForecast, RealForecast
+from forecast.file import PerfectFile, RealForecast, ScenarioFile
 from utils.logger import log_usefull
 """
 Please do not make changes to this file. 
@@ -88,7 +88,7 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
                 agent_time_elapsed += time.perf_counter()- step_start
             
             num_steps += 1
-            if num_steps % 1000 == 0:
+            if num_steps % 100 == 0:
                 # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
                 # log_usefull(env, filename)
                 print(f"Num Steps: {num_steps}, Num episodes: {episodes_completed}")
@@ -112,9 +112,9 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    case_study = "logging"
+    case_study = "read_scenarios_files"
     phase_num = 1
-    total_steps = 200
+    total_steps = 9000
     if phase_num == 3:
         n_buildings = 7
     else:
@@ -126,15 +126,21 @@ if __name__ == '__main__':
         scenario_gen = RealForecast()
         manager = MPC(0)
     elif case_study == "perfect_file_forec":
-        scenario_gen = PerfectForecast()
+        scenario_gen = PerfectFile()
         manager = MPC(0)
     elif case_study == "logging":
         type_forec = 'recurrent_gaussian_qts'
-        param = f"{type_forec}_{total_steps}"
-        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios =2, steps_ahead=2,n_buildings=n_buildings)
+        # type_forec = 'point_and_variance'
+
+        param = f"{type_forec}_{total_steps}_{phase_num}"
+        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios =10, steps_ahead=24,n_buildings=n_buildings)
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
+    elif case_study == "read_scenarios_files":
+        file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
+        scenario_gen = ScenarioFile(file_name)
+        manager = MPC(0)
     
     agent_used = GeneralAgent(scenario_gen, manager)
     evaluate(agent_used, total_steps=total_steps,phase_num=phase_num)
