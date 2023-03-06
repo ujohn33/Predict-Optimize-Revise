@@ -6,7 +6,7 @@ from scipy.stats import norm, multivariate_normal
 # import timedelta
 from datetime import datetime, timedelta
 
-TARGET = 'net_target'
+TARGET = 'net_target+1'
 
 #Function to define the forecast name from time
 def get_time_label(time):
@@ -34,7 +34,7 @@ class modelEstimation:
     def _split_times(self, data):
         self.uniform = expando()
         for leadT in data.Hour.unique().astype(int):
-            reals = data.loc[data['Hour'] == leadT, 'net_target']
+            reals = data.loc[data['Hour'] == leadT, TARGET]
             unif_aux = {}
             unif_aux['value'] = {}
             unif_aux['time'] = {}

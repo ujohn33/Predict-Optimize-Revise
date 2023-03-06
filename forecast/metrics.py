@@ -1,60 +1,54 @@
 import numpy as np
 
-def CRPS_ensemble(obs,fc,fair=True,axis=0):
+def crps(y_true, y_pred):
     """
-    @author: Ole Wulff
-    @date: 2020-07-08
-    implementation of fair (adjusted) CRPS based on equation (6) from Leutbecher (2018, QJRMS, https://doi.org/10.1002/qj.3387)
-    version with fair=False tested against properscoring implementation crps_ensemble (see https://pypi.org/project/properscoring/)
-    INPUT:
-        obs: observations as n-dimensional array
-        fc: forecast ensemble as (n+1)-dimensional where the extra dimension (axis) carries the ensemble members
-        fair: if True returns the fair version of the CRPS accounting for the limited ensemble size (see Leutbecher, 2018)
-              if False returns the normal CRPS
-        axis: axis of fc array that contains the ensemble members, defaults to 0
-    OUTPUT:
-        CRPS: n-dimensional array
-    TODO:
-        implement weights for ensemble member weighting
+    Computes the Continuous Ranked Probability Score (CRPS).
+
+    Args:
+        y_true (array-like): True values of the target variable, of shape (n_samples,)
+        y_pred (array-like): Predicted values of the target variable, of shape (n_samples, n_forecasts)
+
+    Returns:
+        float: CRPS score.
     """
-    odims = obs.shape
-    M = fc.shape[axis]
-    if axis != 0:
-        fc = np.swapaxes(fc,axis,0)
+    n_samples = y_true.shape[0]
+    n_forecasts = y_pred.shape[1]
 
-    # flatten all dimensions except for the ensemble member dimension:
-    fc_flat = fc.reshape([M,-1])
-    obs_flat = obs.reshape([-1])
+    # Compute the first term of the CRPS formula
+    crps_term1 = 0
+    for t in range(n_samples):
+        for i in range(n_forecasts):
+            crps_term1 += abs(y_pred[t, i] - y_true[t])
 
-    dsum = np.array([abs(fc_flat[jj] - fc_flat[kk]) for kk in range(M) for jj in range(M)]).sum(axis=axis)
-    if fair:
-        CRPS = 1/M * (abs(fc_flat - obs_flat)).sum(axis=axis) - 1/(2*M*(M-1)) * dsum
-    else:
-        CRPS = 1/M * (abs(fc_flat - obs_flat)).sum(axis=axis) - 1/(2*M**2) * dsum
+    crps_term1 /= n_samples * n_forecasts
 
-    # is this necessary or even a good idea at all?
-#     del dsum, fc_flat, obs_flat
+    # Compute the second term of the CRPS formula
+    crps_term2 = 0
+    for t in range(n_samples):
+        for i in range(n_forecasts):
+            for j in range(n_forecasts):
+                crps_term2 += abs(y_pred[t, i] - y_pred[t, j])
 
-    return CRPS.reshape([*odims])
+    crps_term2 /= 2 * n_samples * n_forecasts ** 2
 
-# energy score is the average of the CRPS over all lead times
-def energy_score(obs,fc,fair=True):
-    crps_ensemble = CRPS_ensemble(obs,fc,fair=fair)
-    return np.mean(crps_ensemble)
+    # Compute the CRPS score
+    crps_score = crps_term1 - crps_term2
 
-def crps_ensemble(obs,fc,fair=True):
-    """
-    A xarray wrapper for CRPS_ensemble()
-    """
+    return crps_term1, crps_term2, crps_score
 
-    # obs = obs.broadcast_like(fc.mean('member'))
-    obs,fc = xr.align(obs,fc,join='outer')
-    print(obs)
 
-    return xr.apply_ufunc(
-            CRPS_ensemble, obs, fc,
-            input_core_dims  = [['time'],['member','time']],
-            output_core_dims = [['time']],
-            vectorize=True
-        )
-
+def rank_bins(scens, reals):
+    # for each lead time, find the bin that the real value is in
+    bins = []
+    # loop over steps ahead
+    for step in scens['time_step'].unique():
+        # loop over buildings
+        for building in scens['building'].unique():
+            temp = scens.loc[scens['time_step'] == step].loc[scens['building'] == building]
+            for i in range(1, 25):
+                build_col = 'building_{}'.format(building)
+                real_value = reals.loc[reals['time_step'] == i+1, build_col].values[0]
+                column_name = '+{}h'.format(i)
+                bin_number = temp[column_name].sort_values().reset_index(drop=True).searchsorted(real_value)
+                bins.append(bin_number)
+    return bins

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
-from forecast.metrics import crps_ensemble, energy_score
+from forecast.metrics import crps
 import random
 
 def debugger_is_active() -> bool:
@@ -97,6 +97,7 @@ class Scenario_Generator:
                 scenarios_B.append(self.recurrent_gaussian(prev_steps, current_step, id_param, horizon))
         elif type == 'quantiles':
             scenarios_B = self.quantiles(prev_steps, current_step, id_param, horizon)
+            scenarios_B = self.swap_levels(scenarios_B)
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
         elif type == 'point_and_variance':
@@ -127,8 +128,7 @@ class Scenario_Generator:
     def quantiles(self, prev_steps, current_step, id_param, horizon=24):
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
-        if self.n_scenarios <= 20:
-            self.qts_model.update_prev_steps(prev_steps)
+        if self.n_scenarios < 21:
             # if number of scenarios is even, take equally spaced quantiles from the list of base quantiles
             quantiles = self.sample_quantiles(self.n_scenarios)
             # round to 3 decimals
@@ -138,7 +138,16 @@ class Scenario_Generator:
             quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
             for i_step in range(horizon):
                 qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
+                # monotone reordering of quantiles
+                qts_temp = np.sort(qts_temp)
                 qts_final[i_step, :] = qts_temp[quantile_indexes]
+        elif self.n_scenarios == 21:
+            qts_final = np.zeros((horizon, self.n_scenarios))
+            for i_step in range(horizon):
+                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
+                # monotone reordering of quantiles
+                qts_temp = np.sort(qts_temp)
+                qts_final[i_step, :] = qts_temp
         else:
             print('Number of scenarios should be less than 20')
         return qts_final

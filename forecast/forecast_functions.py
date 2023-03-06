@@ -238,6 +238,7 @@ class Forecast:
             forec_denorm[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
+            
         """
         if self.time_step > 23:
             if step == 1:

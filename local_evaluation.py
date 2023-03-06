@@ -112,7 +112,7 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    case_study = "read_scenarios_files"
+    case_study = "logging"
     phase_num = 1
     total_steps = 9000
     if phase_num == 3:
@@ -129,16 +129,16 @@ if __name__ == '__main__':
         scenario_gen = PerfectFile()
         manager = MPC(0)
     elif case_study == "logging":
-        type_forec = 'recurrent_gaussian_qts'
-        # type_forec = 'point_and_variance'
+        #type_forec = 'recurrent_gaussian_qts'
+        type_forec = 'quantiles'
 
         param = f"{type_forec}_{total_steps}_{phase_num}"
-        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios =10, steps_ahead=24,n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios = 21, steps_ahead=24,n_buildings=n_buildings)
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
     elif case_study == "read_scenarios_files":
-        file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
+        file_name = f"debug_logs/scenarios_quantiles_9000_1.csv"
         scenario_gen = ScenarioFile(file_name)
         manager = MPC(0)
     
