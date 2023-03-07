@@ -238,7 +238,8 @@ class Forecast:
             forec_denorm[qt_cnt] = self.min_max_denormalize(
                 forec[qt_cnt], self.net_min_dict[id], self.net_max_dict[id]
             )
-            
+        # sort quantile values in ascending order to prevent quantile crossings
+        forec_denorm = np.sort(forec_denorm)
         """
         if self.time_step > 23:
             if step == 1:

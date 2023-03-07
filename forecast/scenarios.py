@@ -138,15 +138,11 @@ class Scenario_Generator:
             quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
             for i_step in range(horizon):
                 qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
-                # monotone reordering of quantiles
-                qts_temp = np.sort(qts_temp)
                 qts_final[i_step, :] = qts_temp[quantile_indexes]
         elif self.n_scenarios == 21:
             qts_final = np.zeros((horizon, self.n_scenarios))
             for i_step in range(horizon):
                 qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
-                # monotone reordering of quantiles
-                qts_temp = np.sort(qts_temp)
                 qts_final[i_step, :] = qts_temp
         else:
             print('Number of scenarios should be less than 20')
