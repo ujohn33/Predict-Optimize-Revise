@@ -31,7 +31,8 @@ class Forecast:
         self.init_forecast()
         if point_forecast:
             self.model_pt = joblib.load(model_dir+"lgb_point_step_24.pkl")
-            self.model_pt_next = joblib.load(model_dir+"lgb_next_step.pkl")
+            #self.model_pt_next = joblib.load(model_dir+"lgb_next_step_1.pkl")
+            self.model_pt_next = lgb.Booster(model_file=model_dir+"lgb_next_step_1.txt")
         else:
             for qt in self.quantiles:
                 # read an lgb model in a txt file
@@ -377,8 +378,12 @@ class Forecast:
 
     def get_point_and_variance(self, step: int, id: int):
         forec = self.get_point_forecast_step(step, id)
+        # read the gmm model from models/gmm/ folder with joblib
+        gmm = joblib.load(f"models/gmm/gmm_residual_hour_{id}.joblib")
+        # sample from the gmm model
+        var = gmm.sample(1)[0][0]
         # look-up the variance in a variance dict
-        var = self.variance_dict[self.prev_steps["month"][0]][str(self.prev_steps["hour"][0]-1)]
+        # var = self.variance_dict[self.prev_steps["month"][0]][str(self.prev_steps["hour"][0]-1)]
         # min max normalize the variance
         var = self.min_max_normalize(var, self.net_min_dict[id], self.net_max_dict[id])
         return forec, var
