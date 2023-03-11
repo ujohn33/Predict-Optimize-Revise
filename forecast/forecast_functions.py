@@ -345,7 +345,7 @@ class Forecast:
                         last_val = np.nan
                     X[i] = last_val
                 elif key == "hour":
-                    X[i] = (self.prev_steps["hour"][-1] + step -1) % 24
+                    X[i] = (self.prev_steps["hour"][-1] + step - 1) % 24
                 elif key == "hour_x":
                     X[i] = np.cos(
                         2 * np.pi * ((self.prev_steps["hour"][-1] + step -1) % 24) / 24
@@ -387,3 +387,4 @@ class Forecast:
         # min max normalize the variance
         var = self.min_max_normalize(var, self.net_min_dict[id], self.net_max_dict[id])
         return forec, var
+    

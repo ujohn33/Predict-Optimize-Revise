@@ -26,6 +26,10 @@ class Scenario_Generator:
             self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_24/')
         elif type == 'point':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+        elif type == 'full_covariance':
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            # read cov matrix from pickle file
+            self.cov_matrix = joblib.load('data/residuals_corr/cov_hour.pkl')
         elif type == 'point_and_variance':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)    
         self.scenarios = []
@@ -100,6 +104,8 @@ class Scenario_Generator:
             scenarios_B = self.swap_levels(scenarios_B)
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
+        elif type == 'full_covariance':
+            scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         elif type == 'point_and_variance':
             sceni, vari = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
             for i in range(self.n_scenarios):
@@ -147,6 +153,15 @@ class Scenario_Generator:
         else:
             print('Number of scenarios should be less than 20')
         return qts_final
+
+    def full_covariance(self, prev_steps, current_step, id_param, horizon=24):
+        point_scen = self.point_forecast(prev_steps, current_step, id_param, horizon)
+        rv_mvnorm = multivariate_normal([0]*24, cov=self.cov_matrix[prev_steps['hour'][-1]])
+        samples = rv_mvnorm.rvs(self.n_scenarios)
+        scenarios = []
+        for i in range(self.n_scenarios):
+            scenarios.append(point_scen + samples[i])
+        return scenarios
 
     def point_forecast(self, prev_steps, current_step, id_param, horizon=24):
         scenario = np.zeros(horizon)
