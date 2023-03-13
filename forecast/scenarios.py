@@ -26,12 +26,19 @@ class Scenario_Generator:
             self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_24/')
         elif type == 'point':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+        elif type == 'point_recurrent':
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl')
         elif type == 'full_covariance':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
             # read cov matrix from pickle file
             self.cov_matrix = joblib.load('data/residuals_corr/cov_hour.pkl')
         elif type == 'point_and_variance':
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)    
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl') 
+        elif type == 'point_and_variance_gmm':
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl')    
         self.scenarios = []
         self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
         # round to 3 decimals
@@ -104,6 +111,8 @@ class Scenario_Generator:
             scenarios_B = self.swap_levels(scenarios_B)
         elif type == 'point':
             scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
+        elif type == 'point_recurrent':
+            scenarios_B = [self.point_recurrent_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
         elif type == 'full_covariance':
             scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         elif type == 'point_and_variance':
@@ -117,6 +126,11 @@ class Scenario_Generator:
                     time_step = self.qts_model.time_step
                     build_num = id_param
                     self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
+        elif type == 'point_and_variance_gmm':
+            sceni, vari = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            for i in range(self.n_scenarios):
+                scenario = sceni + vari
+                scenarios_B.append(scenario)
         return scenarios_B
 
 
@@ -155,8 +169,19 @@ class Scenario_Generator:
         return qts_final
 
     def full_covariance(self, prev_steps, current_step, id_param, horizon=24):
-        point_scen = self.point_forecast(prev_steps, current_step, id_param, horizon)
-        rv_mvnorm = multivariate_normal([0]*24, cov=self.cov_matrix[prev_steps['hour'][-1]])
+        point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
+        cov_matrix = self.cov_matrix[prev_steps['hour'][-1] % 24]
+        rv_mvnorm = multivariate_normal([0]*24, cov_matrix)
+        samples = rv_mvnorm.rvs(self.n_scenarios)
+        scenarios = []
+        for i in range(self.n_scenarios):
+            scenarios.append(point_scen + samples[i])
+        return scenarios
+    
+    def full_covariance_bymonth(self, prev_steps, current_step, id_param, horizon=24):
+        point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
+        cov_matrix = self.cov_matrix[prev_steps['hour'][-1] % 24][prev_steps['month'][-1]]
+        rv_mvnorm = multivariate_normal([0]*24, cov_matrix)
         samples = rv_mvnorm.rvs(self.n_scenarios)
         scenarios = []
         for i in range(self.n_scenarios):
@@ -168,8 +193,21 @@ class Scenario_Generator:
         self.qts_model.update_prev_steps(prev_steps)
         self.qts_model.update_current_step(current_step)
         self.qts_model.update_min_max_scaler(id_param)
+        sample = False
         for i in range(horizon):
-            scenario[i] = self.qts_model.get_point_forecast_step(step=i+1, id=id_param)
+            sample = scenario[i] = self.qts_model.get_point_forecast_step(step=i+1, id=id_param)
+        #self.plot_scenario(scenario)
+        return list(scenario)
+    
+    def point_recurrent_forecast(self, prev_steps, current_step, id_param, horizon=24):
+        scenario = np.zeros(horizon)
+        self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
+        sample = False
+        for i in range(horizon):
+            sample = self.qts_model.get_point_forecast_step(step=i+1, id=id_param, last_param = sample)
+            scenario[i] = sample
         #self.plot_scenario(scenario)
         return list(scenario)
 

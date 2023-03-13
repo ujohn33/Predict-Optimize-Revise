@@ -112,15 +112,15 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    case_study = "read_scenarios_files"
-    phase_num = 2
+    case_study = "point_real_time"
+    phase_num = 1
     total_steps = 9000
     if phase_num == 3:
         n_buildings = 7
     else:
         n_buildings = 5
     if case_study == "point_real_time":
-        scenario_gen = Scenario_Generator(type = 'point', n_scenarios =1, n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =10, n_buildings=n_buildings)
         manager = MPC(0)
     elif case_study == "realistic_file_forec":
         scenario_gen = RealForecast()
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         #type_forec = 'point_and_variance'
 
         param = f"{type_forec}_{total_steps}_{phase_num}"
-        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios = 10, steps_ahead=24,n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios = 1, steps_ahead=24,n_buildings=n_buildings)
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger

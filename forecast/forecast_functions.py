@@ -30,9 +30,11 @@ class Forecast:
         self.y_old = np.zeros((8760, self.num_buildings, 1))
         self.init_forecast()
         if point_forecast:
-            self.model_pt = joblib.load(model_dir+"lgb_point_step_24.pkl")
-            #self.model_pt_next = joblib.load(model_dir+"lgb_next_step_1.pkl")
-            self.model_pt_next = lgb.Booster(model_file=model_dir+"lgb_next_step_1.txt")
+            # self.model_pt = joblib.load(model_dir+"lgb_point_step_24.pkl")
+            #self.model_pt_next = joblib.load(model_dir+"lgb_next_step.pkl")
+            self.model_pt = joblib.load(model_dir+"lgb_24step_12march.pkl")
+            self.model_pt_next = joblib.load(model_dir+'lgb_next_step_diff_12march.pkl')
+            #self.model_pt_next = lgb.Booster(model_file=model_dir+"lgb_next_step_1.txt")
         else:
             for qt in self.quantiles:
                 # read an lgb model in a txt file
@@ -156,7 +158,7 @@ class Forecast:
             for i, key in enumerate(X_order):
                 # if key starts with net_target
                 if key == "net_target":
-                    if last_param == False:
+                    if last_param is False:
                         last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
                             self.prev_steps[f"solar_generation_{id}"][-1]
                         )
@@ -255,7 +257,7 @@ class Forecast:
         return forec_denorm
 
 
-    def get_point_forecast_step(self, step: int, id: int):
+    def get_point_forecast_step(self, step: int, id: int, last_param=False):
             # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
             #  'net_target-23', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
             #   'relative_humidity+1', 'drybulb_temp+1']
@@ -301,14 +303,19 @@ class Forecast:
                     else:
                         X[i] = np.nan
                 elif key == "net_target":
-                    last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
-                        self.prev_steps[f"solar_generation_{id}"][-1]
-                    )
-                    norm_val = self.min_max_normalize(
-                        last_val, self.net_min_dict[id], self.net_max_dict[id]
-                    )
+                    if last_param is False:
+                        last_val = self.prev_steps[f"non_shiftable_load_{id}"][-1] - (
+                            self.prev_steps[f"solar_generation_{id}"][-1]
+                        )
+                        norm_val = self.min_max_normalize(
+                            last_val, self.net_min_dict[id], self.net_max_dict[id]
+                        )
+                    else:
+                        norm_val = self.min_max_normalize(
+                            last_param, self.net_min_dict[id], self.net_max_dict[id]
+                        )
                     X[i] = norm_val
-                elif key.startswith("diffuse_solar_radiation+"):
+                elif key.startswith("diffusße_solar_radiation+"):
                     step_back = -(25 - step)
                     if self.time_step > 23:
                         last_val = self.prev_steps[
@@ -345,14 +352,14 @@ class Forecast:
                         last_val = np.nan
                     X[i] = last_val
                 elif key == "hour":
-                    X[i] = (self.prev_steps["hour"][-1] + step - 1) % 24
+                    X[i] = (self.prev_steps["hour"][-1] + step) % 24
                 elif key == "hour_x":
                     X[i] = np.cos(
-                        2 * np.pi * ((self.prev_steps["hour"][-1] + step -1) % 24) / 24
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
                     )
                 elif key == "hour_y":
                     X[i] = np.sin(
-                        2 * np.pi * ((self.prev_steps["hour"][-1] + step -1) % 24) / 24
+                        2 * np.pi * ((self.prev_steps["hour"][-1] + step) % 24) / 24
                     )
                 elif key == "month_x":
                     X[i] = np.cos(2 * np.pi * self.prev_steps["month"][-1] / 12)
@@ -376,12 +383,15 @@ class Forecast:
             #print(forec)
             return forec
 
-    def get_point_and_variance(self, step: int, id: int):
+    def get_point_and_variance(self, step: int, id: int, dist_type = 'gmm'):
         forec = self.get_point_forecast_step(step, id)
         # read the gmm model from models/gmm/ folder with joblib
-        gmm = joblib.load(f"models/gmm/gmm_residual_hour_{id}.joblib")
+        if dist_type == 'gmm':
+            dist = joblib.load(f"models/gmm/gmm_residual_hour_{id}.joblib")
+        # elif dist_type == 'norm':
+        #     dist = norm()
         # sample from the gmm model
-        var = gmm.sample(1)[0][0]
+        var = dist.sample(1)[0][0]
         # look-up the variance in a variance dict
         # var = self.variance_dict[self.prev_steps["month"][0]][str(self.prev_steps["hour"][0]-1)]
         # min max normalize the variance
