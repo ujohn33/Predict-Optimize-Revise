@@ -120,7 +120,7 @@ if __name__ == '__main__':
     else:
         n_buildings = 5
     if case_study == "point_real_time":
-        scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =10, n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = 'full_covariance', n_scenarios =10, n_buildings=n_buildings)
         manager = MPC(0)
     elif case_study == "realistic_file_forec":
         scenario_gen = RealForecast()

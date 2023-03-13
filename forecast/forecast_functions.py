@@ -41,12 +41,6 @@ class Forecast:
                 self.model_dict[qt] = lgb.Booster(model_file=model_dir+"lgb_{}.txt".format(qt))
 
     def init_forecast(self):
-        # look-up varinance for each hour and month and save it to a dict
-        # save the pandas dataframe with hour in index and month in columnds to a dictionary 
-        self.variance_dict = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
-        self.variance_dict = self.variance_dict.to_dict(orient="dict")
-        # print("variance dict: ", self.variance)
-
 
         # make a conservative estimate for max and min consumption
         self.cons_min = 0
@@ -383,18 +377,22 @@ class Forecast:
             #print(forec)
             return forec
 
-    def get_point_and_variance(self, step: int, id: int, dist_type = 'gmm'):
-        forec = self.get_point_forecast_step(step, id)
-        # read the gmm model from models/gmm/ folder with joblib
-        if dist_type == 'gmm':
-            dist = joblib.load(f"models/gmm/gmm_residual_hour_{id}.joblib")
-        # elif dist_type == 'norm':
-        #     dist = norm()
-        # sample from the gmm model
-        var = dist.sample(1)[0][0]
-        # look-up the variance in a variance dict
-        # var = self.variance_dict[self.prev_steps["month"][0]][str(self.prev_steps["hour"][0]-1)]
-        # min max normalize the variance
-        var = self.min_max_normalize(var, self.net_min_dict[id], self.net_max_dict[id])
-        return forec, var
+    # def get_point_and_variance(self, step: int, id: int, last_param=False, n_scen=10, dist_type = 'gmm'):
+    #     forec = self.get_point_forecast_step(step, id, last_param)
+    #     # read the gmm model from models/gmm/ folder with joblib
+    #     hour = (self.prev_steps["hour"][-1] + step) % 24
+    #     if dist_type == 'gmm':
+    #         dist = self.gmm_dict[hour]
+    #     elif dist_type == 'norm':
+    #         # gaussian with a variance looked up in a variance dict
+    #         dist = norm(loc=0, scale=self.variance_dict[str(self.prev_steps["month"][-1])][hour])
+    #     # sample from the distribution with n_scen scenarios
+    #     resids = dist.sample(n_scen)[0]
+    #     resids = np.array(np.array(resids).flatten())
+    #     #min max denormalize the resids_list
+    #     resids = self.min_max_denormalize(
+    #             resids, self.net_min_dict[id], self.net_max_dict[id]
+    #         )
+    #     resids_list = resids.tolist()
+    #     return forec, resids_list
     
