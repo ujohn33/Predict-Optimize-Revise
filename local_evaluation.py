@@ -112,7 +112,7 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
     
 
 if __name__ == '__main__':
-    case_study = "read_scenarios_files"
+    case_study = "point_real_time"
     phase_num = 1
     total_steps = 9000
     if phase_num == 3:
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     else:
         n_buildings = 5
     if case_study == "point_real_time":
-        scenario_gen = Scenario_Generator(type = 'point', n_scenarios =1, n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = 'full_covariance', n_scenarios =10, n_buildings=n_buildings)
         manager = MPC(0)
     elif case_study == "realistic_file_forec":
         scenario_gen = RealForecast()
@@ -129,17 +129,18 @@ if __name__ == '__main__':
         scenario_gen = PerfectFile()
         manager = MPC(0)
     elif case_study == "logging":
-        type_forec = 'recurrent_gaussian_qts'
-        # type_forec = 'point_and_variance'
+        #type_forec = 'recurrent_gaussian_qts'
+        type_forec = 'full_covariance'
+        #type_forec = 'point_and_variance'
 
         param = f"{type_forec}_{total_steps}_{phase_num}"
-        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios =10, steps_ahead=24,n_buildings=n_buildings)
+        scenario_gen = Scenario_Generator(type = type_forec, n_scenarios = 1, steps_ahead=24,n_buildings=n_buildings)
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
     elif case_study == "read_scenarios_files":
-        file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
-        scenario_gen = ScenarioFile(file_name)
+        file_name = f"debug_logs/scenarios_recurrent_gaussian_qts_9000_2.csv"
+        scenario_gen = ScenarioFile(file_name, n_scenarios=10)
         manager = MPC(0)
     
     agent_used = GeneralAgent(scenario_gen, manager)

@@ -6,6 +6,7 @@ from scipy.stats import norm, multivariate_normal
 # import timedelta
 from datetime import datetime, timedelta
 
+TARGET = 'net_target+1'
 
 #cdf from conditional quantile regression
 def cqr_cdf(row, cdf_keyword): 
@@ -78,7 +79,7 @@ class modelEstimation:
             cdf_loc_leadT = getattr(self.cdf, str(leadT))
 
             preds = getattr(self.betas, str(leadT))
-            reals = data.loc[data['Hour'] == leadT, 'net_target']
+            reals = data.loc[data['Hour'] == leadT, TARGET]
             unif_aux = {}
             unif_aux['value'] = {}
             unif_aux['time'] = {}

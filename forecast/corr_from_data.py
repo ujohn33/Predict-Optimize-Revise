@@ -6,7 +6,7 @@ from scipy.stats import norm, multivariate_normal
 # import timedelta
 from datetime import datetime, timedelta
 
-TARGET = 'net_target'
+TARGET = 'net_target+1'
 
 #Function to define the forecast name from time
 def get_time_label(time):
@@ -34,7 +34,7 @@ class modelEstimation:
     def _split_times(self, data):
         self.uniform = expando()
         for leadT in data.Hour.unique().astype(int):
-            reals = data.loc[data['Hour'] == leadT, 'net_target']
+            reals = data.loc[data['Hour'] == leadT, TARGET]
             unif_aux = {}
             unif_aux['value'] = {}
             unif_aux['time'] = {}
@@ -108,7 +108,7 @@ class Scenarios:
 
     def _get_scenarios(self, model, data_test, fore):
         self.simulation = expando()      
-        dates_of_issue = pd.to_datetime(data_test.timestamp.dt.date.unique())
+        dates_of_issue = pd.to_datetime(data_test.timestamp.dt.date.unique())[1:-23]
         for i_date_issue, date_issue in enumerate(dates_of_issue):
             date_issue_name = get_time_label(date_issue)
             print('date_issue_name: ', date_issue_name)
@@ -170,8 +170,8 @@ if __name__ == '__main__':
     scs = Scenarios(model, data_test, points)
         # save the scenarios into a dataframe
     scs_df = pd.DataFrame()
-    for i, date in enumerate(data_test.timestamp.dt.date.unique()):
-        date = pd.to_datetime(date)
+    for i, timestamp in enumerate(data_test.timestamp):
+        timestamp = pd.to_datetime(timestamp)
         date_name = get_time_label(date)
         temp = getattr(getattr(scs.simulation, date_name), 'simulation').T.iloc[:, 1:]
         temp['real'] = data_test.loc[data_test.timestamp.dt.date == date.date(), :].net_target.reset_index(drop=True)
