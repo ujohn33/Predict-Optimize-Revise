@@ -28,12 +28,18 @@ class Scenario_Generator:
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
         elif type == 'point_recurrent':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl')
         elif type == 'full_covariance':
+            # change model for steps 2 to 24 to recurrent next step model 
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
             # read cov matrix from pickle file
-            self.cov_matrix = joblib.load('data/residuals_corr/cov_hour.pkl')
+            self.cov_matrix = joblib.load('models/residuals_corr/cov_hour.pkl')
+        elif type == 'full_covariance_monthly':
+            # change model for steps 2 to 24 to recurrent next step model 
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            # read cov matrix from pickle file
+            self.cov_matrix = joblib.load('models/residuals_corr_monthly/cov_hour.pkl')
         elif type == 'point_and_variance':
+            # change model for steps 2 to 24 to recurrent next step model 
             self.variance_dict = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
             self.variance_dict = self.variance_dict.to_dict(orient="dict")
             self.gmm_dict = {}
@@ -41,7 +47,6 @@ class Scenario_Generator:
                 self.gmm_dict[hour] = joblib.load(f"models/gmm/gmm_residual_hour_{hour}.joblib")
             # intialize the point forecast
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl') 
         elif type == 'point_and_variance_gmm':
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
             self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl')    
@@ -121,6 +126,8 @@ class Scenario_Generator:
             scenarios_B = [self.point_recurrent_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
         elif type == 'full_covariance':
             scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+        elif type == 'full_covariance_monthly':
+            scenarios_B = self.full_covariance_monthly(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         elif type == 'point_and_variance':
             scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
             # for i in range(self.n_scenarios):
@@ -181,11 +188,13 @@ class Scenario_Generator:
             scenarios.append(point_scen + samples[i])
         return scenarios
     
-    def full_covariance_bymonth(self, prev_steps, current_step, id_param, horizon=24):
+    def full_covariance_monthly(self, prev_steps, current_step, id_param, horizon=24):
         point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
         cov_matrix = self.cov_matrix[prev_steps['hour'][-1] % 24][prev_steps['month'][-1]]
         rv_mvnorm = multivariate_normal([0]*24, cov_matrix)
         samples = rv_mvnorm.rvs(self.n_scenarios)
+        # denormalize samples
+        samples = samples * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
         scenarios = []
         for i in range(self.n_scenarios):
             scenarios.append(point_scen + samples[i])
