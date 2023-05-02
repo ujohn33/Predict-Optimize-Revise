@@ -31,13 +31,18 @@ class Scenario_Generator:
         elif type == 'full_covariance':
             # change model for steps 2 to 24 to recurrent next step model 
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            # read cov matrix from pickle file
-            self.cov_matrix = joblib.load('models/residuals_corr/cov_hour.pkl')
+            # read multivariate normal distribution from pickle file
+            self.mv_norm = joblib.load('models/residuals_corr/mvn_hour.pkl')
         elif type == 'full_covariance_monthly':
             # change model for steps 2 to 24 to recurrent next step model 
             self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
             # read cov matrix from pickle file
             self.cov_matrix = joblib.load('models/residuals_corr_monthly/cov_hour.pkl')
+        elif type == 'full_covariance_differences':
+            # change model for steps 2 to 24 to recurrent next step model 
+            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+            # read multivariate normal distribution from pickle file
+            self.mv_norm = joblib.load('models/differences_cov_matrix/mvn_hour.pkl')
         elif type == 'point_and_variance':
             # change model for steps 2 to 24 to recurrent next step model 
             self.variance_dict = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
@@ -109,6 +114,8 @@ class Scenario_Generator:
                         #print(scen[i])
         if self.debugger_is_active:
             plt.show()
+            # clean up
+            plt.clf()
         scenarios = self.swap_levels(scenarios)
         return scenarios
 
@@ -128,8 +135,10 @@ class Scenario_Generator:
             scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         elif type == 'full_covariance_monthly':
             scenarios_B = self.full_covariance_monthly(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+        elif type == 'full_covariance_differences':
+            scenarios_B = self.full_covariance_differences(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         elif type == 'point_and_variance':
-            scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon, dist_type='norm')
             # for i in range(self.n_scenarios):
             #     if self.logger is not None:
             #         quantile_bounds = self.base_quantiles
@@ -138,7 +147,7 @@ class Scenario_Generator:
             #         build_num = id_param
             #         self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
         elif type == 'point_and_variance_gmm':
-            sceni, vari = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         return scenarios_B
 
 
@@ -178,8 +187,8 @@ class Scenario_Generator:
 
     def full_covariance(self, prev_steps, current_step, id_param, horizon=24):
         point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
-        cov_matrix = self.cov_matrix[prev_steps['hour'][-1] % 24]
-        rv_mvnorm = multivariate_normal([0]*24, cov_matrix)
+        current_hour = prev_steps['hour'][-1] % 24
+        rv_mvnorm = self.mv_norm[current_hour]
         samples = rv_mvnorm.rvs(self.n_scenarios)
         # denormalize samples
         samples = samples * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
@@ -199,6 +208,39 @@ class Scenario_Generator:
         for i in range(self.n_scenarios):
             scenarios.append(point_scen + samples[i])
         return scenarios
+    
+    def full_covariance_differences(self, prev_steps, current_step, id_param, horizon=24):
+        self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
+        start = prev_steps[f"non_shiftable_load_{id_param}"][-1] - prev_steps[f"solar_generation_{id_param}"][-1]
+        current_hour = prev_steps['hour'][-1] % 24
+        rv_mvnorm = self.mv_norm[current_hour]
+        # sample scenarios of residuals from previous steps
+        residuals = rv_mvnorm.rvs(self.n_scenarios)
+        # denormalize samples
+        residuals = residuals * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param])       
+        # Initialize the scenario matrix
+        scenarios = np.zeros((self.n_scenarios, 24))
+        scenarios[:, 0] = start
+        # Generate scenarios for each time step
+        for i in range(horizon):
+            # Add the residuals to the previous value to generate a new scenario
+            scenarios[:, i] = scenarios[:, i-1] + residuals[:, i-i]
+        # Convert the scenario matrix to a list of lists
+        scenario_list = scenarios.tolist()
+        return scenario_list    
+    
+    def previous_days(self, prev_steps, current_step, id_param, horizon=24):
+        scenario = np.zeros(horizon)
+        self.qts_model.update_prev_steps(prev_steps)
+        self.qts_model.update_current_step(current_step)
+        self.qts_model.update_min_max_scaler(id_param)
+        sample = False
+        for i in range(horizon):
+            sample = self.generate_next_step(id_param= id_param, p_step=i+1, last_param = sample)
+            scenario[i] = sample
+        return scenario
 
     def point_forecast(self, prev_steps, current_step, id_param, horizon=24):
         scenario = np.zeros(horizon)
@@ -235,11 +277,13 @@ class Scenario_Generator:
             hour = (prev_steps["hour"][-1] + step_temp) % 24
             if dist_type == 'gmm':
                 dist = self.gmm_dict[hour]
+                # sample from the distribution with n_scen scenarios
+                resids = dist.sample(self.n_scenarios)[0]
             elif dist_type == 'norm':
                 # gaussian with a variance looked up in a variance dict
-                dist = norm(loc=0, scale=self.variance_dict[str(self.prev_steps["month"][-1])][hour])
-            # sample from the distribution with n_scen scenarios
-            resids = dist.sample(self.n_scenarios)[0]
+                dist = norm(loc=0, scale=self.variance_dict[prev_steps["month"][-1]][str(hour)])
+                # sample from the distribution with n_scen scenarios
+                resids = dist.rvs(self.n_scenarios)
             resids = np.array(np.array(resids).flatten())
             #min max denormalize the resids_list
             resids = resids * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
