@@ -172,6 +172,6 @@ debug_logs/
 data/.DS_Store
 models/.DS_Store
 .DS_Store
-models/.DS_Store
 plots/
 .DS_Store
+all_buildings_phase1.csv
