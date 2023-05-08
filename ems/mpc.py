@@ -1,7 +1,10 @@
 if __name__ == "__main__":
     from manager import Manager
+    from logger_manager import log_scenarios, log_real_power
 else:
     from ems.manager import Manager
+    from ems.logger_manager import log_scenarios, log_real_power
+
 from scipy.optimize import linprog
 
 import numpy as np
@@ -9,11 +12,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class MPC(Manager):
-    def __init__(self, fixed_steps, log_files = False):
+    def __init__(self, fixed_steps, weight_step="equal", file_name = None):
         super().__init__()
-        self.log_files = log_files
+        
         self.fixed_steps = fixed_steps
-        self.file_name = "debug_logs/mpc_debug"
+        self.file_name = file_name
+        # Can be equal, cufe or favour_next
+        self.weight_step = weight_step
 
     def calculate_powers(self, observation, forec_scenarios, time_step):
 
@@ -30,6 +35,17 @@ class MPC(Manager):
         else:
             fixed_steps = self.fixed_steps
         # Calculate the sum of the forecasted building power at each step
+
+        if self.weight_step == "equal":
+            weight_steps = [1 for _ in range(horizon)]
+        elif self.weight_step == "cufe":
+            weight_steps = [(46-i)/46 for i in range(horizon)]
+            weight_steps = [i/sum(weight_steps)*horizon for i in weight_steps]
+        elif self.weight_step == "favour_next":
+            weight_steps = [1 for _ in range(horizon)]
+            weight_steps[0] = 4
+            weight_steps = [i/sum(weight_steps)*horizon for i in weight_steps]
+
         forec_step_sum = list()
         for i in range(num_scenarios):
             forec_step_sum.append(list())
@@ -170,7 +186,7 @@ class MPC(Manager):
             for j in range(num_buildings):
                 for k in range(horizon):
                     var_ind = carb_level + i * num_buildings * horizon + j * horizon + k
-                    cur_constr[var_ind] = -1
+                    cur_constr[var_ind] = -1/weight_steps[k]
             cur_equal = 0
             carb_calc_constr_eq.append(cur_constr)
             carb_calc_equal_eq.append(cur_equal)
@@ -219,7 +235,7 @@ class MPC(Manager):
             cur_constr[var_ind] = 1
             for k in range(horizon):
                 var_ind = price_level + i * horizon + k
-                cur_constr[var_ind] = -1
+                cur_constr[var_ind] = -1/weight_steps[k]
             cur_equal = 0
             price_calc_constr_eq.append(cur_constr)
             price_calc_equal_eq.append(cur_equal)
@@ -289,8 +305,8 @@ class MPC(Manager):
                 abs1_ind = grid_abs_1_level + i * horizon + k
                 abs2_ind = grid_abs_2_level + i * horizon + k
                 var_ind = price_level + i * horizon + k
-                cur_constr[abs1_ind] = -1
-                cur_constr[abs2_ind] = -1
+                cur_constr[abs1_ind] = -1/weight_steps[k]
+                cur_constr[abs2_ind] = -1/weight_steps[k]
             cur_equal = 0
             grid_calc_constr_eq.append(cur_constr)
             grid_calc_equal_eq.append(cur_equal)
@@ -384,22 +400,33 @@ class MPC(Manager):
         # soc_power.append(res)
         # print(res)
         actions = list()
+        power_batteries = [[] for _ in range(num_buildings)]
         for i in range(num_buildings):
-            action = (res.x[fixed_pos_level + i*fixed_steps]+res.x[fixed_neg_level + i*fixed_steps])/batt_capacity[i]
+            for j in range(fixed_steps):
+                power_batteries[i].append((res.x[fixed_pos_level + i*fixed_steps+j]+res.x[fixed_neg_level + i*fixed_steps+j]))
+
+            action = power_batteries[i][0]/batt_capacity[i]
 
             actions.append([action])
-        
+        actions = np.array(actions)
+
         fun_score = res.fun + 1/6
-        if self.log_files:
+        # Debug single forecast MPC with scores and all
+        if False:
             ### Debug
             base_costs = {"base_carb":base_carb[0],
             "base_price":base_price[0],
             "base_grid":base_grid[0]
             }
             log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs,fixed_neg_level)
-            powers = [val[0]*batt_capacity[i] for i, val in enumerate(actions)]
+            powers = [val[0]*batt_capapowerscity[i] for i, val in enumerate(actions)]
             ### End debug
-        return np.array(actions)
+        
+        if self.file_name is not None:
+            log_real_power(time_step, self.file_name.replace("/","/real_power_"), observation)
+            log_scenarios(time_step, self.file_name.replace("/","/scen_"), forec_scenarios)
+            log_fixed_powers(time_step, self.file_name.replace("/","/pow_"), power_batteries)
+        return actions
 
 def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_costs, fixed_neg_level):
     
@@ -449,6 +476,30 @@ def plot_logs_mpc_perfect(file_name):
 
     plt.show()
 
+def log_fixed_powers(time_step, file_name, power_batteries):
+    num_buildings = len(power_batteries)
+    fixed_steps = len(power_batteries[0])
+
+    if time_step == 0 :
+        pow_file = open(file_name,"w+")
+        
+        pow_start = ["time_step","building",]
+        pow_tail = [f"+{i}h" for i in range(fixed_steps)]
+
+        pow_head = ",".join(pow_start+pow_tail)+"\n"
+        pow_file.write(pow_head)
+        pow_file.close()
+    
+    pow_file = open(file_name,"a+")
+    
+
+    for i in range(num_buildings):
+        line_start = f"{time_step},{i},"
+        line_tail = ",".join([str(val) for val in power_batteries[i]])
+        line = line_start+line_tail+"\n"
+        pow_file.write(line)
+
+    pow_file.close()
 
 if __name__ == "__main__":
     plot_logs_mpc_perfect("debug_logs/mpc_debug_pow_0.csv")

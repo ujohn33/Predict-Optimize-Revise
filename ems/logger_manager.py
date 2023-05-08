@@ -14,45 +14,11 @@ class LoggerManager(Manager):
     
     def calculate_powers(self, observation, forec_scenarios, time_step):
         
-        num_scenarios = len(forec_scenarios)
         num_buildings = len(forec_scenarios[0])
-        horizon = len(forec_scenarios[0][0])
 
-        if time_step == 0 :
-            scen_file = open(self.scen_filename,"w+")
-            
-            scen_start = ["time_step","scenario","building",]
-            scen_tail = [f"+{i+1}h" for i in range(horizon)]
+        log_scenarios(time_step, self.scen_filename, forec_scenarios)
 
-            scen_head = ",".join(scen_start+scen_tail)+"\n"
-            scen_file.write(scen_head)
-            scen_file.close()
-
-            real_val_file = open(self.real_val_filename,"w+")
-            real_header = ",".join(["time_step"]+[f"building_{i}" for i in range(num_buildings)])
-            real_header+= "\n"
-            real_val_file.write(real_header)
-            real_val_file.close()
-        
-        scen_file = open(self.scen_filename,"a+")
-        for i in range(num_scenarios):
-            for j in range(num_buildings):
-                line_start = f"{time_step},{i},{j},"
-                line_tail = ",".join([str(val) for val in forec_scenarios[i][j]])
-                line = line_start+line_tail+"\n"
-                scen_file.write(line)
-        scen_file.close()
-
-        # Log last step without use of battery
-        last_step = [observation[i][20]-observation[i][21] for i in range(num_buildings)]
-        real_val_file = open(self.real_val_filename,"a+")
-        
-        line_start = f"{time_step-1},"
-        line_tail = ",".join([str(val) for val in last_step])
-        line = line_start+line_tail+"\n"
-        real_val_file.write(line)
-
-        real_val_file.close()
+        log_real_power(time_step, self.real_val_filename, observation)
         
 
         return [[0] for _ in range(num_buildings)]
@@ -84,4 +50,48 @@ class LoggerManager(Manager):
         line = quant_start+quant_tail+"\n"
         quant_file.write(line)
 
+def log_scenarios(time_step, scen_filename, forec_scenarios):
+    num_scenarios = len(forec_scenarios)
+    num_buildings = len(forec_scenarios[0])
+    horizon = len(forec_scenarios[0][0])
+    if time_step == 0 :
+        scen_file = open(scen_filename,"w+")
         
+        scen_start = ["time_step","scenario","building",]
+        scen_tail = [f"+{i}h" for i in range(horizon)]
+
+        scen_head = ",".join(scen_start+scen_tail)+"\n"
+        scen_file.write(scen_head)
+        scen_file.close()
+
+    scen_file = open(scen_filename,"a+")
+    for i in range(num_scenarios):
+        for j in range(num_buildings):
+            line_start = f"{time_step},{i},{j},"
+            line_tail = ",".join([str(val) for val in forec_scenarios[i][j]])
+            line = line_start+line_tail+"\n"
+            scen_file.write(line)
+    scen_file.close()
+
+def log_real_power(time_step,real_val_filename, observation):
+    
+    num_buildings = len(observation)
+
+    if time_step == 0 :
+
+        real_val_file = open(real_val_filename,"w+")
+        real_header = ",".join(["time_step"]+[f"building_{i}" for i in range(num_buildings)])
+        real_header+= "\n"
+        real_val_file.write(real_header)
+        real_val_file.close()
+    
+    # Log last step without use of battery
+    last_step = [observation[i][20]-observation[i][21] for i in range(num_buildings)]
+    real_val_file = open(real_val_filename,"a+")
+    
+    line_start = f"{time_step-1},"
+    line_tail = ",".join([str(val) for val in last_step])
+    line = line_start+line_tail+"\n"
+    real_val_file.write(line)
+
+    real_val_file.close()
