@@ -67,6 +67,10 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
 
             observations, _, done, _ = env.step(actions)
             if done or (num_steps+1) == total_steps:
+                # Log run
+                filename = f"debug_logs/run_logs.csv"
+                log_usefull(env, filename)
+
                 episodes_completed += 1
                 metrics_t = env.evaluate()
                 metrics = {"price_cost": metrics_t[0], 
@@ -103,6 +107,8 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
         print("=========================Completed=========================")
 
     if len(episode_metrics) > 0:
+        
+        
         print("Average Price Cost:", np.mean([e['price_cost'] for e in episode_metrics]))
         print("Average Emmision Cost:", np.mean([e['emmision_cost'] for e in episode_metrics]))
         print("Average Grid Cost:", np.mean([e['grid_cost'] for e in episode_metrics]))
@@ -121,13 +127,17 @@ if __name__ == '__main__':
     else:
         n_buildings = 5
     if case_study == "point_real_time":
+        n_scen = 1
         scenario_gen = Scenario_Generator(type = 'point_and_variance', n_scenarios =n_scen, n_buildings=n_buildings)
+        manager = MPC(0, weight_step="cufe")
+    elif case_study == "covariance":
+        scenario_gen = Scenario_Generator(type = 'full_covariance', n_scenarios =n_scen, n_buildings=n_buildings)
         manager = MPC(0)
     elif case_study == "realistic_file_forec":
         scenario_gen = RealForecast()
-        manager = MPC(0)
+        manager = MPC(0, weight_step="equal")
     elif case_study == "perfect_file_forec":
-        scenario_gen = PerfectFile()
+        scenario_gen = PerfectFile(48)
         manager = MPC(0)
     elif case_study == "logging":
         #type_forec = 'recurrent_gaussian_qts'
@@ -139,9 +149,17 @@ if __name__ == '__main__':
         manager = logger
         scenario_gen.logger = logger
     elif case_study == "read_scenarios_files":
+        #file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
         file_name = f"debug_logs/scenarios_point_and_variance_9000_3.csv"
         scenario_gen = ScenarioFile(file_name, n_scenarios=n_scen)
-        manager = MPC(0)
+        manager = MPC(1)
+    elif case_study == "read_log_mpc":
+        method = "recurrent_quant"
+        file_name = f"debug_logs/scenarios_{method}_s{n_scen}_p{phase_num}_24h.csv"
+        
+        scenario_gen = ScenarioFile(file_name, n_scenarios=n_scen)
+        mpc_log = f"debug_logs/mpc_{method}_s{n_scen}_p{phase_num}_t{total_steps}.csv"
+        manager = MPC(0, file_name=mpc_log)
     
     agent_used = GeneralAgent(scenario_gen, manager)
     evaluate(agent_used, total_steps=total_steps,phase_num=phase_num)
