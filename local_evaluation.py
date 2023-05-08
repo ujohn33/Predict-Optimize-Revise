@@ -6,6 +6,7 @@ from ems.mpc import MPC
 from forecast.scenarios import Scenario_Generator
 from forecast.file import PerfectFile, RealForecast, ScenarioFile
 from utils.logger import log_usefull
+from utils.util_functions import MyLinearRegression
 """
 Please do not make changes to this file. 
 This is only a reference script provided to allow you 
@@ -119,7 +120,7 @@ def evaluate(agent_used, total_steps=9000, phase_num = 1):
 
 if __name__ == '__main__':
     case_study = "logging"
-    phase_num = 2
+    phase_num = 1
     total_steps = 9000
     n_scen = 10
     if phase_num == 3:
@@ -141,8 +142,8 @@ if __name__ == '__main__':
         manager = MPC(0)
     elif case_study == "logging":
         #type_forec = 'recurrent_gaussian_qts'
+        type_forec = 'point'
         #type_forec = 'point_and_variance'
-        type_forec = 'point_and_variance'
         param = f"{type_forec}_{total_steps}_{phase_num}"
         scenario_gen = Scenario_Generator(type = type_forec, n_scenarios = n_scen, steps_ahead=24,n_buildings=n_buildings)
         logger = LoggerManager(param)
