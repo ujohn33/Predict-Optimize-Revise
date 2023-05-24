@@ -8,6 +8,8 @@ from forecast.file import PerfectFile, RealForecast, ScenarioFile
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 
+from utils.util_functions import MyLinearRegression
+
 """
 Please do not make changes to this file. 
 This is only a reference script provided to allow you 
@@ -165,8 +167,8 @@ if __name__ == "__main__":
         manager = MPC(0)
     elif case_study == "logging":
         # type_forec = 'recurrent_gaussian_qts'
+        type_forec = "point"
         # type_forec = 'point_and_variance'
-        type_forec = "point_and_variance"
         param = f"{type_forec}_{total_steps}_{phase_num}"
         scenario_gen = Scenario_Generator(
             type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings

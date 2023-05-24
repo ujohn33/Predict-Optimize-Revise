@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 from collections import UserDict
+from sklearn.linear_model import LinearRegression
+
 
 def calculate_mase2(pred_array, true_array, train_naive_pred_array, train_true_array):
     # pred_array is a vector of predictions
@@ -57,3 +59,16 @@ def import_data(file):
     df = pd.read_csv(file, index_col=0)
     df = reduce_mem_usage(df)
     return df
+
+# define the LinearRegression class with the feature_name property
+class MyLinearRegression(LinearRegression):
+    def __init__(self):
+        super().__init__()
+        self.features = None
+
+    @property
+    def feature_names(self):
+        return self.features
+
+    def feature_name(self):
+        return self.feature_names
