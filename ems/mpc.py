@@ -11,16 +11,26 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
 class MPC(Manager):
-    def __init__(self, fixed_steps, weight_step="equal", file_name = None):
+    def __init__(self, fixed_steps, weight_step="equal", steps_skip=1, file_name=None):
         super().__init__()
-        
+
         self.fixed_steps = fixed_steps
         self.file_name = file_name
         # Can be equal, cufe or favour_next
         self.weight_step = weight_step
+        self.steps_skip = steps_skip
+        self.steps_cache = [[] for _ in range(steps_skip)]
 
     def calculate_powers(self, observation, forec_scenarios, time_step):
+        index_cache = time_step % self.steps_skip
+
+        if index_cache != 0:
+            cached_action = self.steps_cache[index_cache]
+            return np.array(cached_action)
+        else:
+            self.steps_cache = [[] for _ in range(self.steps_skip)]
 
         num_scenarios = len(forec_scenarios)
         num_buildings = len(forec_scenarios[0])
@@ -39,12 +49,12 @@ class MPC(Manager):
         if self.weight_step == "equal":
             weight_steps = [1 for _ in range(horizon)]
         elif self.weight_step == "cufe":
-            weight_steps = [(46-i)/46 for i in range(horizon)]
-            weight_steps = [i/sum(weight_steps)*horizon for i in weight_steps]
+            weight_steps = [(46 - i) / 46 for i in range(horizon)]
+            weight_steps = [i / sum(weight_steps) * horizon for i in weight_steps]
         elif self.weight_step == "favour_next":
             weight_steps = [1 for _ in range(horizon)]
             weight_steps[0] = 4
-            weight_steps = [i/sum(weight_steps)*horizon for i in weight_steps]
+            weight_steps = [i / sum(weight_steps) * horizon for i in weight_steps]
 
         forec_step_sum = list()
         for i in range(num_scenarios):
@@ -57,14 +67,16 @@ class MPC(Manager):
 
         soc_init = [observation[i][22] * batt_capacity[i] for i in range(num_buildings)]
 
-        last_step_nobatt = [observation[i][20]-observation[i][21] for i in range(num_buildings)]
+        last_step_nobatt = [
+            observation[i][20] - observation[i][21] for i in range(num_buildings)
+        ]
         last_step_batt = [observation[i][23] for i in range(num_buildings)]
         last_step_nobatt_sum = sum(last_step_nobatt)
         last_step_batt_sum = sum(last_step_batt)
 
-        price_cost = [self.price_df[(time_step+1 + i) % 8760] for i in range(horizon)]
+        price_cost = [self.price_df[(time_step + 1 + i) % 8760] for i in range(horizon)]
 
-        carb_cost = [self.carb_df[(time_step +1+ i) % 8760] for i in range(horizon)]
+        carb_cost = [self.carb_df[(time_step + 1 + i) % 8760] for i in range(horizon)]
 
         # Base cost calculation
         base_grid = list()
@@ -124,9 +136,9 @@ class MPC(Manager):
             + num_grid_abs_2
         )
         fixed_pos_level = num_obj
-        fixed_neg_level = fixed_pos_level+num_fixed_pos
-        mult_pos_level = fixed_neg_level+num_fixed_neg
-        mult_neg_level = mult_pos_level+num_mult_pos
+        fixed_neg_level = fixed_pos_level + num_fixed_pos
+        mult_pos_level = fixed_neg_level + num_fixed_neg
+        mult_neg_level = mult_pos_level + num_mult_pos
         carb_level = mult_neg_level + num_mult_neg
         price_level = carb_level + num_carb_pow
         grid_abs_1_level = price_level + num_price_pow
@@ -135,9 +147,9 @@ class MPC(Manager):
         # Objective function First 3 variables is value used for each cost
         obj_func = np.zeros((num_var,), dtype=float)
         for i in range(num_scenarios):
-            obj_func[i * 3] = 1 / base_carb[i]/3
-            obj_func[i * 3 + 1] = 1 / base_price[i]/3
-            obj_func[i * 3 + 2] = 1 / base_grid[i]/6
+            obj_func[i * 3] = 1 / base_carb[i] / 3
+            obj_func[i * 3 + 1] = 1 / base_price[i] / 3
+            obj_func[i * 3 + 2] = 1 / base_grid[i] / 6
 
         # Set carbon cost to be positive
         # forall s,b,t batt_power[s,b,t]-carb_pow[s,b,t]/carb_cost[t]<=-baseload[s,b,t]
@@ -148,22 +160,25 @@ class MPC(Manager):
         for i in range(num_scenarios):
             for j in range(num_buildings):
                 for k in range(horizon):
-                    
                     cur_constr = np.zeros((num_var,), dtype=float)
 
                     # Select battery power
                     if k < fixed_steps:
-                        fixed_incr =  j * fixed_steps + k
-                        var_ind = fixed_pos_level +fixed_incr
+                        fixed_incr = j * fixed_steps + k
+                        var_ind = fixed_pos_level + fixed_incr
                         cur_constr[var_ind] = 1
                         var_ind = fixed_neg_level + fixed_incr
                         cur_constr[var_ind] = 1
                     else:
                         ind_to_add = k - fixed_steps
-                        mult_incr = i * num_buildings * non_fixed_steps+ j * non_fixed_steps+ ind_to_add
-                        var_ind = mult_pos_level+mult_incr
+                        mult_incr = (
+                            i * num_buildings * non_fixed_steps
+                            + j * non_fixed_steps
+                            + ind_to_add
+                        )
+                        var_ind = mult_pos_level + mult_incr
                         cur_constr[var_ind] = 1
-                        var_ind = mult_neg_level+mult_incr
+                        var_ind = mult_neg_level + mult_incr
                         cur_constr[var_ind] = 1
 
                     # Select positive carbon value and divide by the carbon costs
@@ -186,7 +201,7 @@ class MPC(Manager):
             for j in range(num_buildings):
                 for k in range(horizon):
                     var_ind = carb_level + i * num_buildings * horizon + j * horizon + k
-                    cur_constr[var_ind] = -1/weight_steps[k]
+                    cur_constr[var_ind] = -1 / weight_steps[k]
             cur_equal = 0
             carb_calc_constr_eq.append(cur_constr)
             carb_calc_equal_eq.append(cur_equal)
@@ -203,19 +218,23 @@ class MPC(Manager):
                 for j in range(num_buildings):
                     # Select the battery power
                     if k < fixed_steps:
-                        fixed_incr =  j * fixed_steps + k
-                        var_ind = fixed_pos_level +fixed_incr
+                        fixed_incr = j * fixed_steps + k
+                        var_ind = fixed_pos_level + fixed_incr
                         cur_constr[var_ind] = 1
                         var_ind = fixed_neg_level + fixed_incr
                         cur_constr[var_ind] = 1
                     else:
                         ind_to_add = k - fixed_steps
-                        mult_incr = i * num_buildings * non_fixed_steps+ j * non_fixed_steps+ ind_to_add
-                        var_ind = mult_pos_level+mult_incr
+                        mult_incr = (
+                            i * num_buildings * non_fixed_steps
+                            + j * non_fixed_steps
+                            + ind_to_add
+                        )
+                        var_ind = mult_pos_level + mult_incr
                         cur_constr[var_ind] = 1
-                        var_ind = mult_neg_level+mult_incr
+                        var_ind = mult_neg_level + mult_incr
                         cur_constr[var_ind] = 1
-                    
+
                 # Select positive price value and divide by the price costs
                 var_ind = price_level + i * horizon + k
                 cur_constr[var_ind] = -1 / price_cost[k]
@@ -235,7 +254,7 @@ class MPC(Manager):
             cur_constr[var_ind] = 1
             for k in range(horizon):
                 var_ind = price_level + i * horizon + k
-                cur_constr[var_ind] = -1/weight_steps[k]
+                cur_constr[var_ind] = -1 / weight_steps[k]
             cur_equal = 0
             price_calc_constr_eq.append(cur_constr)
             price_calc_equal_eq.append(cur_equal)
@@ -255,26 +274,28 @@ class MPC(Manager):
                     equal_constr = forec_step_sum[i][k] - forec_step_sum[i][k - 1]
 
                 for j in range(num_buildings):
-                    
                     fixed_incr = j * fixed_steps + k
 
                     ind_to_add = k - fixed_steps
-                    mult_incr = i * non_fixed_steps * num_buildings + j * non_fixed_steps + ind_to_add
+                    mult_incr = (
+                        i * non_fixed_steps * num_buildings
+                        + j * non_fixed_steps
+                        + ind_to_add
+                    )
                     if k < fixed_steps:
-                        prev_batt_pow_pos_ind = fixed_pos_level+fixed_incr - 1
-                        prev_batt_pow_neg_ind = fixed_neg_level+fixed_incr-1
+                        prev_batt_pow_pos_ind = fixed_pos_level + fixed_incr - 1
+                        prev_batt_pow_neg_ind = fixed_neg_level + fixed_incr - 1
                         batt_pow_pos_ind = fixed_pos_level + fixed_incr
                         batt_pow_neg_ind = fixed_neg_level + fixed_incr
                     elif k == fixed_steps:
-                        
-                        prev_batt_pow_pos_ind = fixed_pos_level+fixed_incr - 1
-                        prev_batt_pow_neg_ind = fixed_neg_level+fixed_incr-1
+                        prev_batt_pow_pos_ind = fixed_pos_level + fixed_incr - 1
+                        prev_batt_pow_neg_ind = fixed_neg_level + fixed_incr - 1
 
                         batt_pow_pos_ind = mult_pos_level + mult_incr
                         batt_pow_neg_ind = mult_neg_level + mult_incr
                     else:
-                        prev_batt_pow_pos_ind = mult_pos_level+mult_incr - 1
-                        prev_batt_pow_neg_ind = mult_neg_level+mult_incr-1
+                        prev_batt_pow_pos_ind = mult_pos_level + mult_incr - 1
+                        prev_batt_pow_neg_ind = mult_neg_level + mult_incr - 1
 
                         batt_pow_pos_ind = mult_pos_level + mult_incr
                         batt_pow_neg_ind = mult_neg_level + mult_incr
@@ -292,7 +313,7 @@ class MPC(Manager):
 
                 abs_constr_eq.append(cur_constr)
                 abs_equal_eq.append(equal_constr)
-        
+
         # Sum all grid costs to get the final frid cost per scenario.
         # forall s tot_grid[s] = sum_[t]{abs1[s,t]+abs2[s,t]}
         grid_calc_constr_eq = list()
@@ -305,8 +326,8 @@ class MPC(Manager):
                 abs1_ind = grid_abs_1_level + i * horizon + k
                 abs2_ind = grid_abs_2_level + i * horizon + k
                 var_ind = price_level + i * horizon + k
-                cur_constr[abs1_ind] = -1/weight_steps[k]
-                cur_constr[abs2_ind] = -1/weight_steps[k]
+                cur_constr[abs1_ind] = -1 / weight_steps[k]
+                cur_constr[abs2_ind] = -1 / weight_steps[k]
             cur_equal = 0
             grid_calc_constr_eq.append(cur_constr)
             grid_calc_equal_eq.append(cur_equal)
@@ -329,22 +350,26 @@ class MPC(Manager):
                 for k in range(horizon):
                     cur_constr_low = np.zeros((num_var,), dtype=float)
                     cur_constr_high = np.zeros((num_var,), dtype=float)
-                    for l in range(k+1):
+                    for l in range(k + 1):
                         if l < fixed_steps:
                             fixed_incr = j * fixed_steps + l
                             var_ind_pos = fixed_pos_level + fixed_incr
                             var_ind_neg = fixed_neg_level + fixed_incr
                         else:
                             ind_to_add = l - fixed_steps
-                            mult_incr = i * non_fixed_steps * num_buildings+ j * non_fixed_steps+ ind_to_add
-                            
-                            var_ind_pos = mult_pos_level+mult_incr
-                            var_ind_neg = mult_neg_level+mult_incr
+                            mult_incr = (
+                                i * non_fixed_steps * num_buildings
+                                + j * non_fixed_steps
+                                + ind_to_add
+                            )
+
+                            var_ind_pos = mult_pos_level + mult_incr
+                            var_ind_neg = mult_neg_level + mult_incr
 
                         cur_constr_low[var_ind_pos] = -batt_efficiency
-                        cur_constr_low[var_ind_neg] = -1/batt_efficiency
+                        cur_constr_low[var_ind_neg] = -1 / batt_efficiency
                         cur_constr_high[var_ind_pos] = batt_efficiency
-                        cur_constr_high[var_ind_neg] = 1/batt_efficiency
+                        cur_constr_high[var_ind_neg] = 1 / batt_efficiency
 
                     equal_constr_low = soc_init[j]
                     equal_constr_high = batt_capacity[j] - soc_init[j]
@@ -355,27 +380,57 @@ class MPC(Manager):
                     soc_high_constr_ub.append(cur_constr_high)
                     soc_high_equal_ub.append(equal_constr_high)
 
-        c = np.array(obj_func,dtype=float)
+        c = np.array(obj_func, dtype=float)
         A_ub = np.array(
             carb_pos_constr_ub
             + price_pos_constr_ub
             + soc_low_constr_ub
-            + soc_high_constr_ub, 
-            dtype=float
+            + soc_high_constr_ub,
+            dtype=float,
         )
         b_ub = np.array(
             carb_pos_equal_ub
             + price_pos_equal_ub
             + soc_low_equal_ub
-            + soc_high_equal_ub, 
-            dtype=float
+            + soc_high_equal_ub,
+            dtype=float,
         )
 
-        A_eq = np.array(carb_calc_constr_eq + price_calc_constr_eq + abs_constr_eq+grid_calc_constr_eq, dtype=float)
-        b_eq = np.array(carb_calc_equal_eq + price_calc_equal_eq + abs_equal_eq+grid_calc_equal_eq, dtype=float)
+        A_eq = np.array(
+            carb_calc_constr_eq
+            + price_calc_constr_eq
+            + abs_constr_eq
+            + grid_calc_constr_eq,
+            dtype=float,
+        )
+        b_eq = np.array(
+            carb_calc_equal_eq
+            + price_calc_equal_eq
+            + abs_equal_eq
+            + grid_calc_equal_eq,
+            dtype=float,
+        )
 
         rest_positive = num_carb_pow + num_price_pow + num_grid_abs_1 + num_grid_abs_2
 
+        fixed_pos_bound = [(0, max_power) for _ in range(num_fixed_pos)]
+        fixed_neg_bound = [(-max_power, 0) for _ in range(num_fixed_neg)]
+
+        for i, soc in enumerate(soc_init):
+            if soc > 0.8 * batt_capacity[i]:
+                new_max_power = 1
+                fixed_pos_bound[i * fixed_steps] = (0, new_max_power)
+                fixed_neg_bound[i * fixed_steps] = (-new_max_power, 0)
+
+        bounds = (
+            [(0, None) for _ in range(num_obj)]
+            + fixed_pos_bound
+            + fixed_neg_bound
+            + [(0, max_power) for _ in range(num_mult_pos)]
+            + [(-max_power, 0) for _ in range(num_mult_neg)]
+            + [(0, None) for _ in range(rest_positive)]
+        )
+        """
         bounds = (
             [(0, None) for _ in range(num_obj)]
             + [(0, max_power) for _ in range(num_fixed_pos)]
@@ -384,6 +439,7 @@ class MPC(Manager):
             +[(None, 0) for _ in range(num_mult_neg)]
             + [(0, None) for _ in range(rest_positive)]
         )
+        """
 
         res = linprog(
             c,
@@ -392,9 +448,9 @@ class MPC(Manager):
             A_eq=A_eq,
             b_eq=b_eq,
             bounds=bounds,
-            options={#"maxiter":10,
+            options={  # "maxiter":10,
                 # "disp": True
-                },
+            },
         )
         res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
         # soc_power.append(res)
@@ -403,52 +459,84 @@ class MPC(Manager):
         power_batteries = [[] for _ in range(num_buildings)]
         for i in range(num_buildings):
             for j in range(fixed_steps):
-                power_batteries[i].append((res.x[fixed_pos_level + i*fixed_steps+j]+res.x[fixed_neg_level + i*fixed_steps+j]))
+                power_batteries[i].append(
+                    (
+                        res.x[fixed_pos_level + i * fixed_steps + j]
+                        + res.x[fixed_neg_level + i * fixed_steps + j]
+                    )
+                )
 
-            action = power_batteries[i][0]/batt_capacity[i]
+            # Cache actions
+            for j, _ in enumerate(self.steps_cache):
+                cached_action = power_batteries[i][j] / batt_capacity[i]
+                self.steps_cache[j].append([cached_action])
 
+            action = power_batteries[i][0] / batt_capacity[i]
             actions.append([action])
         actions = np.array(actions)
 
-        fun_score = res.fun + 1/6
+        fun_score = res.fun + 1 / 6
         # Debug single forecast MPC with scores and all
         if False:
             ### Debug
-            base_costs = {"base_carb":base_carb[0],
-            "base_price":base_price[0],
-            "base_grid":base_grid[0]
+            base_costs = {
+                "base_carb": base_carb[0],
+                "base_price": base_price[0],
+                "base_grid": base_grid[0],
             }
-            log_powers_mpc_perfect(self.file_name, res.x, forec_scenarios, time_step, base_costs,fixed_neg_level)
-            powers = [val[0]*batt_capapowerscity[i] for i, val in enumerate(actions)]
+            log_powers_mpc_perfect(
+                self.file_name,
+                res.x,
+                forec_scenarios,
+                time_step,
+                base_costs,
+                fixed_neg_level,
+            )
+            powers = [val[0] * batt_capapowerscity[i] for i, val in enumerate(actions)]
             ### End debug
-        
+
         if self.file_name is not None:
-            log_real_power(time_step, self.file_name.replace("/","/real_power_"), observation)
-            log_scenarios(time_step, self.file_name.replace("/","/scen_"), forec_scenarios)
-            log_fixed_powers(time_step, self.file_name.replace("/","/pow_"), power_batteries)
+            log_real_power(
+                time_step, self.file_name.replace("/", "/real_power_"), observation
+            )
+            log_scenarios(
+                time_step, self.file_name.replace("/", "/scen_"), forec_scenarios
+            )
+            log_fixed_powers(
+                time_step, self.file_name.replace("/", "/pow_"), power_batteries
+            )
         return actions
 
-def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_costs, fixed_neg_level):
-    
+
+def log_powers_mpc_perfect(
+    file_name, result, forec_scenarios, time_step, base_costs, fixed_neg_level
+):
     file_pow = f"{file_name}_pow_{time_step}.csv"
     num_scenarios = len(forec_scenarios)
     num_buildings = len(forec_scenarios[0])
     horizon = len(forec_scenarios[0][0])
 
     file = open(file_pow, "w+")
-    header_list = [f"base_{i}" for i in range(num_buildings)]+[f"final_{i}" for i in range(num_buildings)]
-    header_list += ["base_sum","final_sum"]
-    file_content = ",".join(header_list)+"\n"
+    header_list = [f"base_{i}" for i in range(num_buildings)] + [
+        f"final_{i}" for i in range(num_buildings)
+    ]
+    header_list += ["base_sum", "final_sum"]
+    file_content = ",".join(header_list) + "\n"
 
     for i in range(horizon):
         base_loads = [forec_scenarios[0][j][i] for j in range(num_buildings)]
-        
-        total_load = [base_loads[j]+result[num_scenarios*3+horizon*j+i]+result[fixed_neg_level+horizon*j+i] for j in range(num_buildings)]
-        sum_loads = [sum(base_loads),sum(total_load)]
 
-        list_line = [str(j) for j in base_loads+total_load+sum_loads]
-        
-        file_content += ",".join(list_line)+"\n"
+        total_load = [
+            base_loads[j]
+            + result[num_scenarios * 3 + horizon * j + i]
+            + result[fixed_neg_level + horizon * j + i]
+            for j in range(num_buildings)
+        ]
+        sum_loads = [sum(base_loads), sum(total_load)]
+
+        list_line = [str(j) for j in base_loads + total_load + sum_loads]
+
+        file_content += ",".join(list_line) + "\n"
 
     file.write(file_content)
     file.close()
@@ -457,9 +545,9 @@ def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_c
     file = open(file_kpi, "w+")
 
     file.write("base_carbon,base_price,base_grid,final_carbon,final_price,final_grid\n")
-    base_costs = [val for _,val in base_costs.items()]
+    base_costs = [val for _, val in base_costs.items()]
     final_costs = [result[i] for i in range(3)]
-    all_costs = base_costs+final_costs
+    all_costs = base_costs + final_costs
     file_line = ",".join([str(i) for i in all_costs])
     file.write(file_line)
     file.close()
@@ -467,40 +555,43 @@ def log_powers_mpc_perfect(file_name, result, forec_scenarios, time_step, base_c
 
 def plot_logs_mpc_perfect(file_name):
     pd_df = pd.read_csv(file_name)
-    #base_cols = [f"base_{i}" for i in range(5)]
-    #final_cols = [f"final_{i}" for i in range(5)]
-    #pd_df['base_sum'] = pd_df[base_cols].sum(axis=1)
-    #pd_df['final_sum'] = pd_df[final_cols].sum(axis=1)
+    # base_cols = [f"base_{i}" for i in range(5)]
+    # final_cols = [f"final_{i}" for i in range(5)]
+    # pd_df['base_sum'] = pd_df[base_cols].sum(axis=1)
+    # pd_df['final_sum'] = pd_df[final_cols].sum(axis=1)
 
-    pd_df[['base_sum','final_sum']].plot()
+    pd_df[["base_sum", "final_sum"]].plot()
 
     plt.show()
+
 
 def log_fixed_powers(time_step, file_name, power_batteries):
     num_buildings = len(power_batteries)
     fixed_steps = len(power_batteries[0])
 
-    if time_step == 0 :
-        pow_file = open(file_name,"w+")
-        
-        pow_start = ["time_step","building",]
+    if time_step == 0:
+        pow_file = open(file_name, "w+")
+
+        pow_start = [
+            "time_step",
+            "building",
+        ]
         pow_tail = [f"+{i}h" for i in range(fixed_steps)]
 
-        pow_head = ",".join(pow_start+pow_tail)+"\n"
+        pow_head = ",".join(pow_start + pow_tail) + "\n"
         pow_file.write(pow_head)
         pow_file.close()
-    
-    pow_file = open(file_name,"a+")
-    
+
+    pow_file = open(file_name, "a+")
 
     for i in range(num_buildings):
         line_start = f"{time_step},{i},"
         line_tail = ",".join([str(val) for val in power_batteries[i]])
-        line = line_start+line_tail+"\n"
+        line = line_start + line_tail + "\n"
         pow_file.write(line)
 
     pow_file.close()
 
+
 if __name__ == "__main__":
     plot_logs_mpc_perfect("debug_logs/mpc_debug_pow_0.csv")
-    
