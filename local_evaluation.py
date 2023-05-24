@@ -194,7 +194,7 @@ if __name__ == "__main__":
         scenario_gen = PerfectFile()
         manager = PyoMPC(0)
     elif case_study == "together":
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_24h.csv"
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = ScenarioFile(file_name, n_scenarios=1)
         manager = MPC(0)
 
