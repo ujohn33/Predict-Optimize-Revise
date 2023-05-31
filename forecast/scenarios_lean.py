@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
+from forecast.file import PerfectFile, RealForecast, ScenarioFile
 from forecast.metrics import crps
 import random
 
@@ -14,95 +15,52 @@ def debugger_is_active() -> bool:
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
 
 class Scenario_Generator:
-    def __init__(self, type='norm', n_scenarios=10, n_buildings=5, steps_ahead=24):
+    def __init__(self,  forec_file: str, type='norm_noise', n_scenarios=10, n_buildings=5, steps_ahead=24):
         self.type = type
         self.n_scenarios = n_scenarios
         self.n_buildings = n_buildings
         self.steps_ahead = steps_ahead
+        self.gen_min_dict = {}
+        self.gen_max_dict = {}
+        self.net_min_dict = {}
+        self.net_max_dict = {}
+        self.stds_hourly = {}
+        # make a conservative estimate for max and min net consumption
+        self.net_min = -3
+        self.net_max = 4.6
+        # initialize dicts with conservative estimates
+        for i in range(n_buildings):
+            self.net_min_dict[i] = self.net_min
+            self.net_max_dict[i] = self.net_max
         self.debugger_is_active = debugger_is_active()
-        if type == 'recurrent_gaussian_qts':
-            self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_1/')
-        elif type == 'quantiles':
-            self.qts_model = Forecast(n_buildings, model_dir='models/lag_minus_24/')
-        elif type == 'point':
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-        elif type == 'point_recurrent':
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-        elif type == 'full_covariance':
-            # change model for steps 2 to 24 to recurrent next step model 
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
+        self.forecast_gen = ScenarioFile(forec_file, n_scenarios=1)
+        if type == 'full_covariance':
             # read multivariate normal distribution from pickle file
-            self.mv_norm = joblib.load('models/residuals_corr/mvn_hour.pkl')
-        elif type == 'full_covariance_monthly':
+            self.mv_norm = joblib.load('models/residuals_norm/mvn_hour.pkl')
+        elif type == 'norm_noise':
             # change model for steps 2 to 24 to recurrent next step model 
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            # read cov matrix from pickle file
-            self.cov_matrix = joblib.load('models/residuals_corr_monthly/cov_hour.pkl')
-        elif type == 'full_covariance_differences':
+            self.variance_dict = joblib.load('models/residuals_norm/std_residuals_norm.pkl')
+        elif type == 'norm_noise_online':
             # change model for steps 2 to 24 to recurrent next step model 
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            # read multivariate normal distribution from pickle file
-            self.mv_norm = joblib.load('models/differences_cov_matrix/mvn_hour.pkl')
-        elif type == 'point_and_variance':
-            # change model for steps 2 to 24 to recurrent next step model 
-            self.variance_dict = pd.read_csv("data/variance_hour_month.csv", index_col=0).T
-            self.variance_dict = self.variance_dict.to_dict(orient="dict")
-            self.gmm_dict = {}
-            for hour in range(24):
-                self.gmm_dict[hour] = joblib.load(f"models/gmm/gmm_residual_hour_{hour}.joblib")
-            # intialize the point forecast
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-        elif type == 'point_and_variance_gmm':
-            self.qts_model = Forecast(n_buildings, model_dir='models/point/', point_forecast=True)
-            self.qts_model.model_pt = joblib.load('models/point/lgb_next_step_diff_12march.pkl')    
+            self.variance_dict = joblib.load('models/residuals_norm/std_residuals_norm.pkl')
         self.scenarios = []
-        self.base_quantiles = np.concatenate([[0.001],np.arange(0.05,0.951,0.05),[0.999]])
-        # round to 3 decimals
-        self.base_quantiles = np.round(self.base_quantiles, 3)
-        self.logger = None
-    
-    def sample_from_quantiles(self, quantile_val, quantile_bounds):
-        sample_point = random.random()
-        for i, quant in enumerate(quantile_bounds):
-            if sample_point<quant:
-                if i == 0:
-                    return quantile_val[0]
-                else:
-                    diff_val = quantile_val[i]-quantile_val[i-1]
-                    diff_quant = quantile_bounds[i]-quantile_bounds[i-1]
-                    diff_sample = sample_point-quantile_bounds[i-1]
-                    value_point = quantile_val[i-1]+diff_sample*diff_val/diff_quant
-                    return value_point
-    
-        return quantile_val[-1]
-
-    def generate_next_step(self, id_param, p_step, last_param = False):
-        quantile_bounds = self.qts_model.quantiles
-        if last_param == False:
-            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, p_step)
-            if self.logger is not None:
-                time_step = self.qts_model.time_step
-                build_num = id_param
-                self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
-        else:
-            quantile_values = self.qts_model.forecast_next_step_for_B(id_param, p_step, last_param)
-            
-        sample_temp = self.sample_from_quantiles(quantile_values, quantile_bounds)
-        return sample_temp
+        self.logger = None 
 
     def swap_levels(self, lst):
         return [[sublist[i] for sublist in lst] for i in range(len(lst[0]))]
-
-    def sample_quantiles(self, num_quantiles):
-        start = 0.05
-        end = 0.95
-        quantile_samples = np.linspace(start, end, num=num_quantiles)
-        return quantile_samples
+    
+    def update_min_max_scaler(self, prev_steps, id):
+        last_val = prev_steps[f"non_shiftable_load_{id}"][-1] - (
+            prev_steps[f"solar_generation_{id}"][-1]
+        )
+        self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
+        self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
 
     def generate_scenarios(self, prev_steps, current_step):
         horizon = self.steps_ahead
         scenarios = []
         for b in range(self.n_buildings):
+            self.update_min_max_scaler(prev_steps, b)
             scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)
             scenarios.append(scens_B_temp)
             # plot a list of lists with the same length and range on the x-axis
@@ -121,180 +79,105 @@ class Scenario_Generator:
 
     def generate_scenarios_for_B(self, type, id_param, prev_steps, current_step, horizon=24):
         scenarios_B = []
-        if type == 'recurrent_gaussian_qts':
-            for i in range(self.n_scenarios):
-                scenarios_B.append(self.recurrent_gaussian(prev_steps, current_step, id_param, horizon))
-        elif type == 'quantiles':
-            scenarios_B = self.quantiles(prev_steps, current_step, id_param, horizon)
-            scenarios_B = self.swap_levels(scenarios_B)
-        elif type == 'point':
-            scenarios_B = [self.point_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
-        elif type == 'point_recurrent':
-            scenarios_B = [self.point_recurrent_forecast(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)]
-        elif type == 'full_covariance':
-            scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
-        elif type == 'full_covariance_monthly':
-            scenarios_B = self.full_covariance_monthly(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
-        elif type == 'full_covariance_differences':
-            scenarios_B = self.full_covariance_differences(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
-        elif type == 'point_and_variance':
+        # if type == 'full_covariance':
+        #     scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+        if type == 'norm_noise':
             scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon, dist_type='norm')
-            # for i in range(self.n_scenarios):
-            #     if self.logger is not None:
-            #         quantile_bounds = self.base_quantiles
-            #         quantile_values = norm.ppf(quantile_bounds,sceni[0], vari[0])
-            #         time_step = self.qts_model.time_step
-            #         build_num = id_param
-            #         self.logger.log_quantiles(quantile_bounds, quantile_values, time_step, build_num)
-        elif type == 'point_and_variance_gmm':
+        elif type == 'gmm_noise':
             scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+        elif type == 'norm_noise_online':
+            scenarios_B = self.point_and_variance_online(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon, dist_type='norm')
         return scenarios_B
 
-
-    def recurrent_gaussian(self, prev_steps, current_step, id_param, horizon=24):
-        scenario = np.zeros(horizon)
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        sample = False
-        for i in range(horizon):
-            sample = self.generate_next_step(id_param= id_param, p_step=i+1, last_param = sample)
-            scenario[i] = sample
-        return scenario
-
-    def quantiles(self, prev_steps, current_step, id_param, horizon=24):
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        if self.n_scenarios < 21:
-            # if number of scenarios is even, take equally spaced quantiles from the list of base quantiles
-            quantiles = self.sample_quantiles(self.n_scenarios)
-            # round to 3 decimals
-            quantiles = np.round(quantiles, 3)
-            qts_final = np.zeros((horizon, self.n_scenarios))
-            # find the indexes of the quantiles in the list of base quantiles
-            quantile_indexes = np.where(np.isin(self.base_quantiles, quantiles))[0]
-            for i_step in range(horizon):
-                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
-                qts_final[i_step, :] = qts_temp[quantile_indexes]
-        elif self.n_scenarios == 21:
-            qts_final = np.zeros((horizon, self.n_scenarios))
-            for i_step in range(horizon):
-                qts_temp = self.qts_model.forecast_next_step_for_B(id_param, step=i_step+1)
-                qts_final[i_step, :] = qts_temp
-        else:
-            print('Number of scenarios should be less than 20')
-        return qts_final
-
-    def full_covariance(self, prev_steps, current_step, id_param, horizon=24):
-        point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
+    def point_and_variance(self, prev_steps, current_step, id_param, horizon=24, dist_type='norm'):
+        scenario_B = [0] * horizon
         current_hour = prev_steps['hour'][-1] % 24
-        rv_mvnorm = self.mv_norm[current_hour]
-        samples = rv_mvnorm.rvs(self.n_scenarios)
-        # denormalize samples
-        samples = samples * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
-        scenarios = []
-        for i in range(self.n_scenarios):
-            scenarios.append(point_scen + samples[i])
-        return scenarios
-    
-    def full_covariance_monthly(self, prev_steps, current_step, id_param, horizon=24):
-        point_scen = self.point_recurrent_forecast(prev_steps, current_step, id_param, horizon)
-        cov_matrix = self.cov_matrix[prev_steps['hour'][-1] % 24][prev_steps['month'][-1]]
-        rv_mvnorm = multivariate_normal([0]*24, cov_matrix)
-        samples = rv_mvnorm.rvs(self.n_scenarios)
-        # denormalize samples
-        samples = samples * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
-        scenarios = []
-        for i in range(self.n_scenarios):
-            scenarios.append(point_scen + samples[i])
-        return scenarios
-    
-    def full_covariance_differences(self, prev_steps, current_step, id_param, horizon=24):
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        start = prev_steps[f"non_shiftable_load_{id_param}"][-1] - prev_steps[f"solar_generation_{id_param}"][-1]
-        current_hour = prev_steps['hour'][-1] % 24
-        rv_mvnorm = self.mv_norm[current_hour]
-        # sample scenarios of residuals from previous steps
-        residuals = rv_mvnorm.rvs(self.n_scenarios)
-        # denormalize samples
-        residuals = residuals * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param])       
-        # Initialize the scenario matrix
-        scenarios = np.zeros((self.n_scenarios, 24))
-        scenarios[:, 0] = start
-        # Generate scenarios for each time step
+        base = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
         for i in range(horizon):
-            # Add the residuals to the previous value to generate a new scenario
-            scenarios[:, i] = scenarios[:, i-1] + residuals[:, i-i]
-        # Convert the scenario matrix to a list of lists
-        scenario_list = scenarios.tolist()
-        return scenario_list    
-    
-    def previous_days(self, prev_steps, current_step, id_param, horizon=24):
-        scenario = np.zeros(horizon)
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        sample = False
-        for i in range(horizon):
-            sample = self.generate_next_step(id_param= id_param, p_step=i+1, last_param = sample)
-            scenario[i] = sample
-        return scenario
-
-    def point_forecast(self, prev_steps, current_step, id_param, horizon=24):
-        scenario = np.zeros(horizon)
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        sample = False
-        for i in range(horizon):
-           scenario[i] = self.qts_model.get_point_forecast_step(step=i+1, id=id_param)
-        #self.plot_scenario(scenario)
-        return list(scenario)
-    
-    def point_recurrent_forecast(self, prev_steps, current_step, id_param, horizon=24):
-        scenario = np.zeros(horizon)
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        sample = False
-        for i in range(horizon):
-            sample = self.qts_model.get_point_forecast_step(step=i+1, id=id_param, last_param = sample)
-            scenario[i] = sample
-        #self.plot_scenario(scenario)
-        return list(scenario)
-
-    def point_and_variance(self, prev_steps, current_step, id_param, horizon=24, dist_type='gmm'):
-        scenario_B = [0 * 10] * 24
-        self.qts_model.update_prev_steps(prev_steps)
-        self.qts_model.update_current_step(current_step)
-        self.qts_model.update_min_max_scaler(id_param)
-        sample = False
-        for i in range(horizon):
-            step_temp = i+1
-            sample = self.qts_model.get_point_forecast_step(step=step_temp, id=id_param, last_param = sample)
-            hour = (prev_steps["hour"][-1] + step_temp) % 24
-            if dist_type == 'gmm':
-                dist = self.gmm_dict[hour]
-                # sample from the distribution with n_scen scenarios
-                resids = dist.sample(self.n_scenarios)[0]
-            elif dist_type == 'norm':
-                # gaussian with a variance looked up in a variance dict
-                dist = norm(loc=0, scale=self.variance_dict[prev_steps["month"][-1]][str(hour)])
-                # sample from the distribution with n_scen scenarios
+            lead_hour = (current_hour + i + 1) % 24
+            if dist_type == 'norm':
+                # get the variance of the error for the current hour
+                std = self.variance_dict[current_hour][lead_hour]
+                # set a normal distribution with mean = 0 and variance = variance
+                dist = norm(loc=0, scale=std)
+                # sample from a normal distribution with variance = variance
                 resids = dist.rvs(self.n_scenarios)
+            elif dist_type == 'gmm':
+                # get the gmm for the current hour
+                gmm = self.gmm_dict[lead_hour]
+                # sample from the gmm
+                resids = gmm.sample(self.n_scenarios)[0]
+            else:
+                raise ValueError('dist_type must be either norm or gmm')
             resids = np.array(np.array(resids).flatten())
-            #min max denormalize the resids_list
-            resids = resids * (self.qts_model.net_max_dict[id_param] - self.qts_model.net_min_dict[id_param]) 
-            resids_list = resids.tolist()
-            scenario_B[i] = sample + resids_list
+            resids = resids * (self.net_max_dict[id_param] - self.net_min_dict[id_param]) 
+            scenario_B[i] = (base[i] + resids).tolist()
         scenario_B = self.swap_levels(scenario_B)
         return scenario_B
     
+    def point_and_variance_online(self, prev_steps, current_step, id_param, horizon=24, dist_type='norm'):
+        scenario_B = [0] * horizon
+        current_hour = prev_steps['hour'][-1] % 24
+        base = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
+        if current_step > 168:
+            stds_last_week = self.update_variance_last_week(prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            for h in range(horizon):
+                if dist_type == 'norm':
+                    # get the variance of the error for the current hour
+                    std = stds_last_week[h]
+                    # set a normal distribution with mean = 0 and variance = variance   
+                    dist = norm(loc=0, scale=std)
+                    # sample from a normal distribution with variance = variance
+                    resids = dist.rvs(self.n_scenarios)
+                elif dist_type == 'gmm':
+                    # get the gmm for the current hour
+                    gmm = self.gmm_dict[lead_hour]
+                    # sample from the gmm
+                    resids = gmm.sample(self.n_scenarios)[0]
+                else:
+                    raise ValueError('dist_type must be either norm or gmm')
+                resids = np.array(np.array(resids).flatten())
+                scenario_B[h] = (base[h] + resids).tolist()
+        else:
+            for i in range(horizon):
+                lead_hour = (current_hour + i + 1) % 24
+                if dist_type == 'norm':
+                    # get the variance of the error for the current hour
+                    std = self.variance_dict[current_hour][lead_hour]
+                    # set a normal distribution with mean = 0 and variance = variance
+                    dist = norm(loc=0, scale=std)
+                    # sample from a normal distribution with variance = variance
+                    resids = dist.rvs(self.n_scenarios)
+                elif dist_type == 'gmm':
+                    # get the gmm for the current hour
+                    gmm = self.gmm_dict[lead_hour]
+                    # sample from the gmm
+                    resids = gmm.sample(self.n_scenarios)[0]
+                else:
+                    raise ValueError('dist_type must be either norm or gmm')
+                resids = np.array(np.array(resids).flatten())
+                resids = resids * (self.net_max_dict[id_param] - self.net_min_dict[id_param]) 
+                scenario_B[i] = (base[i] + resids).tolist()
+        scenario_B = self.swap_levels(scenario_B)
+        return scenario_B
 
-    def plot_scenario(self, scenario: list):
-        plt.plot(range(len(scenario)), scenario)
-        #plt.show()
 
-    
+    # make a function that finds the variance of error for each hour of the day
+    def update_variance_last_week(self, prev_steps, current_step, id_param, horizon=24):
+        #current_hour = prev_steps['hour'][-1] % 24
+        # sample_preds is a dict of dicts
+        sample_preds = {}
+        sample_actual = {}
+        resid_stds = {}
+        # actuals sample at certain hour
+        #sample_actual = prev_steps[f'non_shiftable_load_{id_param}'][-168::-24]
+        for h in range(horizon):
+            # forecasts sample at certain hour for certain horizon
+            selected_steps = []
+            for t in range(current_step, current_step-168, -24):
+                selected_steps.append(self.forecast_gen.scen_dict[0][id_param][t][h])
+            sample_preds[h] = selected_steps
+            sample_actual[h] = prev_steps[f'non_shiftable_load_{id_param}'][-1-h:-168-h:-24]
+            # get the residuals std for each horizon
+            resid_stds[h] = np.std([a - b for a, b in zip(sample_actual[h], sample_preds[h])])
+        return resid_stds
