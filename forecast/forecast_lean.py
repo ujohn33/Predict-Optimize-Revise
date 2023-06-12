@@ -34,8 +34,6 @@ class Forecast:
             #self.model_pt_next = joblib.load(model_dir+"lgb_next_step.pkl")
             self.model_pt = joblib.load(model_dir+"lgb_next_step_nodiff_12march.pkl")
             self.model_pt_next = joblib.load(model_dir+'lgb_next_step_diff_12march.pkl')
-            self.model_lr = joblib.load(model_dir+"lr.pkl")
-            self.model_lr_next = joblib.load(model_dir+"lr_next_step.pkl")
             #self.model_pt_next = lgb.Booster(model_file=model_dir+"lgb_next_step_1.txt")
         else:
             for qt in self.quantiles:
@@ -138,7 +136,7 @@ class Forecast:
         self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
 
 
-    def lgb_forecast_next_step_for_B(self, id: int, step, last_param=False):
+    def forecast_next_step_for_B(self, id: int, step, last_param=False):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
         #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
         #   'relative_humidity+1', 'drybulb_temp+1']
@@ -251,13 +249,21 @@ class Forecast:
         """
         #forec = [i[0] for i in forec]
         return forec_denorm
-    
-    def read_prev_steps(self, prev_steps, model, step, id, last_param=False):
-        columnames = model.feature_name()
+
+
+    def get_point_forecast_step(self, step: int, id: int, last_param=False):
+        # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
+        #  'net_target-23', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
+        #   'relative_humidity+1', 'drybulb_temp+1']
+        if step == 1:
+            columnames = self.model_pt_next.feature_name()
+        else:
+            columnames = self.model_pt.feature_name()
         # rename items in the list according to a dict
         X_order = [self.renamer.get(x, x) for x in columnames]
         # make a vector of last values from prev steps using keys from X_order
         X = np.zeros(len(X_order))
+        # print(self.time_step)
         for i, key in enumerate(X_order):
             # if key starts with net_target
             if key == "net_target-23":
@@ -355,19 +361,14 @@ class Forecast:
                 X[i] = np.sin(2 * np.pi * self.prev_steps["month"][-1] / 12)
             elif key in self.prev_steps.keys():
                 X[i] = self.prev_steps[key][-1]
-        return X
-
-
-    def lgb_get_point_forecast_step(self, step: int, id: int, last_param=False):
-        # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
-        #  'net_target-23', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
-        #   'relative_humidity+1', 'drybulb_temp+1']
+        #print(X)
         if step == 1:
-            fx_model = self.model_pt_next
+            # add a value to a prediction vector
+            forec = self.model_pt_next.predict(X.reshape(1, -1))
         else:
-            fx_model = self.model_pt
-        X = self.read_prev_steps(self.prev_steps, fx_model, step, id, last_param)
-        forec = fx_model.predict(X.reshape(1, -1))
+            # add a value to a prediction vector
+            forec = self.model_pt.predict(X.reshape(1, -1))
+        #forec = self.model_pt.predict(X.reshape(1, -1))
         # denormalize the values
         forec = self.min_max_denormalize(
             forec, self.net_min_dict[id], self.net_max_dict[id]
@@ -375,35 +376,23 @@ class Forecast:
         forec = forec[0]
         #print(forec)
         return forec
-    
-    def lr_forecast_next_step(self, id: int, step, last_param=False):
-        # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
-        #  'net_target-23', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
-        #   'relative_humidity+1', 'drybulb_temp+1']
-        if step == 1:
-            fx_model = self.model_lr_next
-        else:
-            fx_model = self.model_lr
-        X = self.read_prev_steps(self.prev_steps, fx_model, step, id, last_param)
-        # if X contains nan values, return nan
-        if np.isnan(X).any():
-            forec = np.nan
-        else:
-            forec = fx_model.predict(X.reshape(1, -1))
-            # denormalize the values
-            forec = self.min_max_denormalize(
-                forec, self.net_min_dict[id], self.net_max_dict[id]
-            )
-        return forec
 
-    def get_point_forecast_step(self, step: int, id: int, last_param=False):
-        # ensemble of lgb and lr
-        lgb_forec = self.lgb_get_point_forecast_step(step, id, last_param)
-        lr_forec = self.lr_forecast_next_step(id, step, last_param)
-        # if lr_forec is nan, return lgb_forec
-        if np.isnan(lr_forec):
-            forec = lgb_forec
-        else:
-            forec = (lgb_forec + lr_forec) / 2
-        return forec
+    # def get_point_and_variance(self, step: int, id: int, last_param=False, n_scen=10, dist_type = 'gmm'):
+    #     forec = self.get_point_forecast_step(step, id, last_param)
+    #     # read the gmm model from models/gmm/ folder with joblib
+    #     hour = (self.prev_steps["hour"][-1] + step) % 24
+    #     if dist_type == 'gmm':
+    #         dist = self.gmm_dict[hour]
+    #     elif dist_type == 'norm':
+    #         # gaussian with a variance looked up in a variance dict
+    #         dist = norm(loc=0, scale=self.variance_dict[str(self.prev_steps["month"][-1])][hour])
+    #     # sample from the distribution with n_scen scenarios
+    #     resids = dist.sample(n_scen)[0]
+    #     resids = np.array(np.array(resids).flatten())
+    #     #min max denormalize the resids_list
+    #     resids = self.min_max_denormalize(
+    #             resids, self.net_min_dict[id], self.net_max_dict[id]
+    #         )
+    #     resids_list = resids.tolist()
+    #     return forec, resids_list
     
