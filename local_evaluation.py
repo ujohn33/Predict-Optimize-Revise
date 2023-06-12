@@ -4,7 +4,7 @@ from agents.general_agent import GeneralAgent
 from ems.logger_manager import LoggerManager
 from ems.mpc import MPC
 from forecast.scenarios import Scenario_Generator
-from forecast.file import PerfectFile, RealForecast, ScenarioFile
+from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 
@@ -140,7 +140,7 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
 
 
 if __name__ == "__main__":
-    case_study = "together"
+    case_study = "together+naive"
     phase_num = 3
     total_steps = 9000
     n_scen = 10
@@ -196,6 +196,10 @@ if __name__ == "__main__":
     elif case_study == "together":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = ScenarioFile(file_name, n_scenarios=1)
+        manager = MPC(0)
+    elif case_study == "together+naive":
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+        scenario_gen = ScenarioFileAndNaive(file_name, n_scenarios=1)
         manager = MPC(0)
 
     agent_used = GeneralAgent(scenario_gen, manager)
