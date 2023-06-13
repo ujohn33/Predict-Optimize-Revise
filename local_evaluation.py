@@ -4,7 +4,7 @@ from agents.general_agent import GeneralAgent
 from ems.logger_manager import LoggerManager
 from ems.mpc import MPC
 from forecast.scenarios_lean import Scenario_Generator
-from forecast.file import PerfectFile, RealForecast, ScenarioFile
+from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 
@@ -186,10 +186,17 @@ if __name__ == "__main__":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = ScenarioFile(file_name, n_scenarios=1)
         manager = MPC(0)
+    elif case_study == "together+naive":
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+        scenario_gen = ScenarioFileAndNaive(file_name, n_scenarios=1)
     elif case_study == "together_live":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = Scenario_Generator(
-            forec_file=file_name, type='norm_noise_online', n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
+            forec_file=file_name,
+            type="norm_noise_online",
+            n_scenarios=n_scen,
+            steps_ahead=24,
+            n_buildings=n_buildings,
         )
         manager = MPC(0)
 
