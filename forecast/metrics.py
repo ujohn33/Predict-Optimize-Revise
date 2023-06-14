@@ -175,8 +175,8 @@ def mean_ensemble_error(scens, reals):
 #     return mean_error
 
 # make a function that takes same inputs as mean_ensemble_error and returns the mean of its return value
-def discrete_mean_ensemble_error(scens):
-    return np.mean(list(mean_ensemble_error(scens).values()))
+def discrete_mean_ensemble_error(scens, reals):
+    return np.mean(list(mean_ensemble_error(scens, reals).values()))
 
 def discrete_ensemble_spread(scens):
     return np.mean(list(ensemble_std(scens).values()))
@@ -204,11 +204,12 @@ def equal_likelihood(scens, control):
         for step in scens['time_step'].unique():
             # loop over buildings
             for building in scens['building'].unique():
-                temp = scens.loc[scens['time_step'] == step].loc[scens['building'] == building]
-                build_col = 'building_{}'.format(building)
+                temp = scens.loc[(scens['time_step'] == step) & (scens['building'] == building)]
+                temp = temp.set_index('scenario', drop=False)
+                target_col = 'net_target+{}'.format(building)
                 column_name = '+{}h'.format(lead)
                 # find the scenario that is closest to the control
-                closest = temp[column_name].sub(control.loc[control['time_step'] == lead+1, build_col].values[0]).abs().idxmin()
+                closest = temp[column_name].sub(control.loc[(control['time_step'] == step) & (control['building'] == building), target_col].values[0]).abs().idxmin()
                 equal_likelihood_freq[lead][closest] = equal_likelihood_freq[lead].get(closest, 0) + 1
         # find the frequency in percentage for each lead time
         # by dividing equal_likelihood_freq[lead][closest] by the total count over all scenarios

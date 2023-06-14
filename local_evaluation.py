@@ -140,8 +140,8 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
 
 
 if __name__ == "__main__":
-    case_study = "together_live"
-    phase_num = 3
+    case_study = "logging"
+    phase_num = 2
     total_steps = 9000
     n_scen = 10
     if phase_num == 3:
@@ -155,12 +155,18 @@ if __name__ == "__main__":
         scenario_gen = PerfectFile(48)
         manager = MPC(0)
     elif case_study == "logging":
-        # type_forec = 'recurrent_gaussian_qts'
-        type_forec = "point"
-        # type_forec = 'point_and_variance'
+        type_forec = "together+naive"
         param = f"{type_forec}_{total_steps}_{phase_num}"
+        # scenario_gen = Scenario_Generator(
+        #     type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
+        # )
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = Scenario_Generator(
-            type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
+            forec_file=file_name,
+            type="norm_noise_online",
+            n_scenarios=n_scen,
+            steps_ahead=24,
+            n_buildings=n_buildings,
         )
         logger = LoggerManager(param)
         manager = logger
