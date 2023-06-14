@@ -63,17 +63,20 @@ class Scenario_Generator:
             self.update_min_max_scaler(prev_steps, b)
             scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)
             scenarios.append(scens_B_temp)
-            # plot a list of lists with the same length and range on the x-axis
-            for scen in scenarios:
-                for i in range(len(scen)):
-                    if self.debugger_is_active:
-                        plt.title("")
-                        plt.plot(scen[i])
-                        #print(scen[i])
-        if self.debugger_is_active:
-            plt.show()
-            # clean up
-            plt.clf()
+            #if current_step > 168:
+                # plot a list of lists with the same length and range on the x-axis
+                # for scen in scenarios:
+                #     for i in range(len(scen)):
+                #         if self.debugger_is_active:
+                #             plt.title("")
+                #             plt.plot(scen[i])
+                #             plt.show()
+                #             # clean up
+                #             plt.close()
+        # if self.debugger_is_active:
+        #     plt.show()
+        #     # clean up
+        #     plt.clf()
         scenarios = self.swap_levels(scenarios)
         return scenarios
 
@@ -102,11 +105,6 @@ class Scenario_Generator:
                 dist = norm(loc=0, scale=std)
                 # sample from a normal distribution with variance = variance
                 resids = dist.rvs(self.n_scenarios)
-            elif dist_type == 'gmm':
-                # get the gmm for the current hour
-                gmm = self.gmm_dict[lead_hour]
-                # sample from the gmm
-                resids = gmm.sample(self.n_scenarios)[0]
             else:
                 raise ValueError('dist_type must be either norm or gmm')
             resids = np.array(np.array(resids).flatten())
@@ -120,23 +118,22 @@ class Scenario_Generator:
         current_hour = prev_steps['hour'][-1] % 24
         base = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
         if current_step > 168:
-            stds_last_week = self.update_variance_last_week(prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            means_last_week, stds_last_week = self.update_variance_last_week(prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
             for h in range(horizon):
                 if dist_type == 'norm':
                     # get the variance of the error for the current hour
                     std = stds_last_week[h]
+                    mean = means_last_week[h]
                     # set a normal distribution with mean = 0 and variance = variance   
-                    dist = norm(loc=0, scale=std)
+                    dist = norm(loc=mean, scale=std)
                     # sample from a normal distribution with variance = variance
                     resids = dist.rvs(self.n_scenarios)
-                elif dist_type == 'gmm':
-                    # get the gmm for the current hour
-                    gmm = self.gmm_dict[lead_hour]
-                    # sample from the gmm
-                    resids = gmm.sample(self.n_scenarios)[0]
                 else:
                     raise ValueError('dist_type must be either norm or gmm')
                 resids = np.array(np.array(resids).flatten())
+                # if self.debugger_is_active:
+                #     plt.plot(resids)
+                    #print(resids)
                 scenario_B[h] = (base[h] + resids).tolist()
         else:
             for i in range(horizon):
@@ -148,16 +145,17 @@ class Scenario_Generator:
                     dist = norm(loc=0, scale=std)
                     # sample from a normal distribution with variance = variance
                     resids = dist.rvs(self.n_scenarios)
-                elif dist_type == 'gmm':
-                    # get the gmm for the current hour
-                    gmm = self.gmm_dict[lead_hour]
-                    # sample from the gmm
-                    resids = gmm.sample(self.n_scenarios)[0]
                 else:
                     raise ValueError('dist_type must be either norm or gmm')
                 resids = np.array(np.array(resids).flatten())
                 resids = resids * (self.net_max_dict[id_param] - self.net_min_dict[id_param]) 
                 scenario_B[i] = (base[i] + resids).tolist()
+        # if self.debugger_is_active:
+        #     if current_step > 168:
+        #         temp_scen = np.array(np.array(scenario_B))
+        #         temp_base = np.array(base)
+        #         plot_noise = temp_scen - temp_base[:,np.newaxis]
+        #         plt.plot(plot_noise)
         scenario_B = self.swap_levels(scenario_B)
         return scenario_B
 
@@ -169,15 +167,29 @@ class Scenario_Generator:
         sample_preds = {}
         sample_actual = {}
         resid_stds = {}
+        resid_means = {}
         # actuals sample at certain hour
         #sample_actual = prev_steps[f'non_shiftable_load_{id_param}'][-168::-24]
         for h in range(horizon):
             # forecasts sample at certain hour for certain horizon
-            selected_steps = []
+            selected_steps = np.array([])
             for t in range(current_step, current_step-168, -24):
-                selected_steps.append(self.forecast_gen.scen_dict[0][id_param][t][h])
+                selected_steps = np.append(selected_steps, self.forecast_gen.scen_dict[0][id_param][t][h])
             sample_preds[h] = selected_steps
-            sample_actual[h] = prev_steps[f'non_shiftable_load_{id_param}'][-1-h:-168-h:-24]
+            load = np.array(prev_steps[f'non_shiftable_load_{id_param}'][-24+h:-169+h:-24])
+            solar = np.array(prev_steps[f'solar_generation_{id_param}'][-24+h:-169+h:-24])
+            sample_actual[h] = load - solar
             # get the residuals std for each horizon
-            resid_stds[h] = np.std([a - b for a, b in zip(sample_actual[h], sample_preds[h])])
-        return resid_stds
+            resid_stds[h] = np.std(sample_actual[h] - sample_preds[h])
+            resid_means[h] = np.mean(sample_actual[h] - sample_preds[h])
+        if self.debugger_is_active:
+            # plot sample preds and actuals
+            plt.plot(sample_preds.keys(), sample_preds.values(), label='preds', linestyle='--')
+            plt.plot(sample_actual.keys(), sample_actual.values(), label='actuals')
+            # plt.plot(resid_stds.keys(), resid_stds.values(), label='stds')
+            # plt.plot(resid_means.keys(), resid_means.values(), label='means')
+            plt.legend()
+            plt.show()
+            # close canvas
+            plt.close()
+        return resid_means, resid_stds
