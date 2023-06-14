@@ -10,9 +10,12 @@ from scipy.optimize import linprog
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import gurobipy as gp
+from gurobipy import GRB
+import scipy.sparse as sp
 
 
-class MPC(Manager):
+class GurobiMatrixMPC(Manager):
     def __init__(self, fixed_steps, weight_step="equal", steps_skip=1, file_name=None):
         super().__init__()
 
@@ -24,6 +27,16 @@ class MPC(Manager):
         self.steps_cache = [[] for _ in range(steps_skip)]
 
     def calculate_powers(self, observation, forec_scenarios, time_step):
+        A_ub_val = list()
+        A_ub_col = list()
+        A_ub_row = list()
+        cur_ub_row = 0
+
+        A_eq_val = list()
+        A_eq_col = list()
+        A_eq_row = list()
+        cur_eq_row = 0
+
         index_cache = time_step % self.steps_skip
 
         if index_cache != 0:
@@ -154,21 +167,29 @@ class MPC(Manager):
         # Set carbon cost to be positive
         # forall s,b,t batt_power[s,b,t]-carb_pow[s,b,t]/carb_cost[t]<=-baseload[s,b,t]
         # or (batt_power[s,b,t]+baseload[s,b,t])*carb_cost[t]<=carb_pow[s,b,t]
-        carb_pos_constr_ub = list()
+        # carb_pos_constr_ub = list()
         carb_pos_equal_ub = list()
 
         for i in range(num_scenarios):
             for j in range(num_buildings):
                 for k in range(horizon):
-                    cur_constr = np.zeros((num_var,), dtype=float)
+                    # cur_constr = np.zeros((num_var,), dtype=float)
 
                     # Select battery power
                     if k < fixed_steps:
                         fixed_incr = j * fixed_steps + k
                         var_ind = fixed_pos_level + fixed_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
+
                         var_ind = fixed_neg_level + fixed_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
                     else:
                         ind_to_add = k - fixed_steps
                         mult_incr = (
@@ -177,52 +198,78 @@ class MPC(Manager):
                             + ind_to_add
                         )
                         var_ind = mult_pos_level + mult_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
+
                         var_ind = mult_neg_level + mult_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
 
                     # Select positive carbon value and divide by the carbon costs
                     var_ind = carb_level + i * num_buildings * horizon + j * horizon + k
-                    cur_constr[var_ind] = -1 / carb_cost[k]
+                    # cur_constr[var_ind] = -1 / carb_cost[k]
+                    A_ub_row.append(cur_ub_row)
+                    A_ub_col.append(var_ind)
+                    A_ub_val.append(-1 / carb_cost[k])
 
                     cur_equal = -forec_scenarios[i][j][k]
 
-                    carb_pos_constr_ub.append(cur_constr)
+                    # carb_pos_constr_ub.append(cur_constr)
+                    cur_ub_row += 1
                     carb_pos_equal_ub.append(cur_equal)
 
         # Sum all carbon costs to get the final carbon cost per scenario.
         # forall s tot_carb[s] = sum_[b,t] {carb_pow[s,b,t]}
-        carb_calc_constr_eq = list()
+        # carb_calc_constr_eq = list()
         carb_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = np.zeros((num_var,), dtype=float)
+            # cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3
-            cur_constr[var_ind] = 1
+            # cur_constr[var_ind] = 1
+            A_eq_row.append(cur_eq_row)
+            A_eq_col.append(var_ind)
+            A_eq_val.append(1)
+
             for j in range(num_buildings):
                 for k in range(horizon):
                     var_ind = carb_level + i * num_buildings * horizon + j * horizon + k
-                    cur_constr[var_ind] = -1 / weight_steps[k]
+                    # cur_constr[var_ind] = -1 / weight_steps[k]
+                    A_eq_row.append(cur_eq_row)
+                    A_eq_col.append(var_ind)
+                    A_eq_val.append(-1 / weight_steps[k])
+
             cur_equal = 0
-            carb_calc_constr_eq.append(cur_constr)
+            # carb_calc_constr_eq.append(cur_constr)
+            cur_eq_row += 1
             carb_calc_equal_eq.append(cur_equal)
 
         # Set price cost to be positive
         # forall s,t sum_b{batt_power[s,b,t]}-price_pow[s,t]/price_cost[t]<=sum_b{-baseload[s,b,t]}
         # or sum_b{batt_power[s,b,t]+baseload[s,b,t]}*price_cost[t]<=price_pow[s,t]
-        price_pos_constr_ub = list()
+        # price_pos_constr_ub = list()
         price_pos_equal_ub = list()
 
         for i in range(num_scenarios):
             for k in range(horizon):
-                cur_constr = np.zeros((num_var,), dtype=float)
+                # cur_constr = np.zeros((num_var,), dtype=float)
                 for j in range(num_buildings):
                     # Select the battery power
                     if k < fixed_steps:
                         fixed_incr = j * fixed_steps + k
                         var_ind = fixed_pos_level + fixed_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
                         var_ind = fixed_neg_level + fixed_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
                     else:
                         ind_to_add = k - fixed_steps
                         mult_incr = (
@@ -231,43 +278,61 @@ class MPC(Manager):
                             + ind_to_add
                         )
                         var_ind = mult_pos_level + mult_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
                         var_ind = mult_neg_level + mult_incr
-                        cur_constr[var_ind] = 1
+                        # cur_constr[var_ind] = 1
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind)
+                        A_ub_val.append(1)
 
                 # Select positive price value and divide by the price costs
                 var_ind = price_level + i * horizon + k
-                cur_constr[var_ind] = -1 / price_cost[k]
+                # cur_constr[var_ind] = -1 / price_cost[k]
+                A_ub_row.append(cur_ub_row)
+                A_ub_col.append(var_ind)
+                A_ub_val.append(-1 / price_cost[k])
 
                 cur_equal = -sum(forec_scenarios[i][b][k] for b in range(num_buildings))
 
-                price_pos_constr_ub.append(cur_constr)
+                # price_pos_constr_ub.append(cur_constr)
+                cur_ub_row += 1
                 price_pos_equal_ub.append(cur_equal)
 
         # Sum all price costs to get the final price cost per scenario.
         # forall s tot_price[s] = sum_[t]{price_pow[s,t]}
-        price_calc_constr_eq = list()
+        # price_calc_constr_eq = list()
         price_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = np.zeros((num_var,), dtype=float)
+            # cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3 + 1
-            cur_constr[var_ind] = 1
+            # cur_constr[var_ind] = 1
+            A_eq_row.append(cur_eq_row)
+            A_eq_col.append(var_ind)
+            A_eq_val.append(1)
+
             for k in range(horizon):
                 var_ind = price_level + i * horizon + k
-                cur_constr[var_ind] = -1 / weight_steps[k]
+                # cur_constr[var_ind] = -1 / weight_steps[k]
+                A_eq_row.append(cur_eq_row)
+                A_eq_col.append(var_ind)
+                A_eq_val.append(-1 / weight_steps[k])
             cur_equal = 0
-            price_calc_constr_eq.append(cur_constr)
+            # price_calc_constr_eq.append(cur_constr)
+            cur_eq_row += 1
             price_calc_equal_eq.append(cur_equal)
 
         # Grid cost absolute constraint, general idea:
         # for all s,t sum_b{(forec[s,b,t]+batt_pow[s,b,t])-(forec[s,b,t-1]+batt_pow[s,b,t-1])}=abs1[s,t]-abs2[s,t]
         # Implementation most time step sum_b{-batt_pow[s,b,t]+batt_pow[s,b,t-1]}+abs1[s,t]-abs2[s,t]= forec[s,t]-forec[s,t-1]
         # Implementation first time step sum_b{-batt_pow[s,b,t]}+abs1[s,t]-abs2[s,t]=forec[s,t]-last_step_pow
-        abs_constr_eq = list()
+        # abs_constr_eq = list()
         abs_equal_eq = list()
         for i in range(num_scenarios):
             for k in range(horizon):
-                cur_constr = np.zeros((num_var,), dtype=float)
+                # cur_constr = np.zeros((num_var,), dtype=float)
                 if k == 0:
                     equal_constr = forec_step_sum[i][k] - last_step_batt_sum
                 else:
@@ -300,36 +365,66 @@ class MPC(Manager):
                         batt_pow_pos_ind = mult_pos_level + mult_incr
                         batt_pow_neg_ind = mult_neg_level + mult_incr
                     if k != 0:
-                        cur_constr[prev_batt_pow_pos_ind] = 1
-                        cur_constr[prev_batt_pow_neg_ind] = 1
-                    cur_constr[batt_pow_pos_ind] = -1
-                    cur_constr[batt_pow_neg_ind] = -1
+                        # cur_constr[prev_batt_pow_pos_ind] = 1
+                        A_eq_row.append(cur_eq_row)
+                        A_eq_col.append(prev_batt_pow_pos_ind)
+                        A_eq_val.append(1)
+                        # cur_constr[prev_batt_pow_neg_ind] = 1
+                        A_eq_row.append(cur_eq_row)
+                        A_eq_col.append(prev_batt_pow_neg_ind)
+                        A_eq_val.append(1)
+                    # cur_constr[batt_pow_pos_ind] = -1
+                    A_eq_row.append(cur_eq_row)
+                    A_eq_col.append(batt_pow_pos_ind)
+                    A_eq_val.append(-1)
+
+                    # cur_constr[batt_pow_neg_ind] = -1
+                    A_eq_row.append(cur_eq_row)
+                    A_eq_col.append(batt_pow_neg_ind)
+                    A_eq_val.append(-1)
 
                 abs1_ind = grid_abs_1_level + i * horizon + k
                 abs2_ind = grid_abs_2_level + i * horizon + k
 
-                cur_constr[abs1_ind] = 1
-                cur_constr[abs2_ind] = -1
+                # cur_constr[abs1_ind] = 1
+                A_eq_row.append(cur_eq_row)
+                A_eq_col.append(abs1_ind)
+                A_eq_val.append(1)
+                # cur_constr[abs2_ind] = -1
+                A_eq_row.append(cur_eq_row)
+                A_eq_col.append(abs2_ind)
+                A_eq_val.append(-1)
 
-                abs_constr_eq.append(cur_constr)
+                # abs_constr_eq.append(cur_constr)
+                cur_eq_row += 1
                 abs_equal_eq.append(equal_constr)
 
         # Sum all grid costs to get the final frid cost per scenario.
         # forall s tot_grid[s] = sum_[t]{abs1[s,t]+abs2[s,t]}
-        grid_calc_constr_eq = list()
+        # grid_calc_constr_eq = list()
         grid_calc_equal_eq = list()
         for i in range(num_scenarios):
-            cur_constr = np.zeros((num_var,), dtype=float)
+            # cur_constr = np.zeros((num_var,), dtype=float)
             var_ind = i * 3 + 2
-            cur_constr[var_ind] = 1
+            # cur_constr[var_ind] = 1
+            A_eq_row.append(cur_eq_row)
+            A_eq_col.append(var_ind)
+            A_eq_val.append(1)
             for k in range(horizon):
                 abs1_ind = grid_abs_1_level + i * horizon + k
                 abs2_ind = grid_abs_2_level + i * horizon + k
                 var_ind = price_level + i * horizon + k
-                cur_constr[abs1_ind] = -1 / weight_steps[k]
-                cur_constr[abs2_ind] = -1 / weight_steps[k]
+                # cur_constr[abs1_ind] = -1 / weight_steps[k]
+                A_eq_row.append(cur_eq_row)
+                A_eq_col.append(abs1_ind)
+                A_eq_val.append(-1 / weight_steps[k])
+                # cur_constr[abs2_ind] = -1 / weight_steps[k]
+                A_eq_row.append(cur_eq_row)
+                A_eq_col.append(abs2_ind)
+                A_eq_val.append(-1 / weight_steps[k])
             cur_equal = 0
-            grid_calc_constr_eq.append(cur_constr)
+            # grid_calc_constr_eq.append(cur_constr)
+            cur_eq_row += 1
             grid_calc_equal_eq.append(cur_equal)
 
         # SOC contraints
@@ -339,17 +434,17 @@ class MPC(Manager):
         # -(batt_power[s,b,0]+...+batt_power[s,b,t])<=soc_init[b]
         # -soc_init[b]-(batt_power[s,b,0]+...+batt_power[s,b,t])<=0
         # !!! Added efficiency to power after comment
-        soc_low_constr_ub = list()
+        # soc_low_constr_ub = list()
         soc_low_equal_ub = list()
 
-        soc_high_constr_ub = list()
+        # soc_high_constr_ub = list()
         soc_high_equal_ub = list()
 
         for i in range(num_scenarios):
             for j in range(num_buildings):
                 for k in range(horizon):
-                    cur_constr_low = np.zeros((num_var,), dtype=float)
-                    cur_constr_high = np.zeros((num_var,), dtype=float)
+                    # cur_constr_low = np.zeros((num_var,), dtype=float)
+                    # cur_constr_high = np.zeros((num_var,), dtype=float)
                     for l in range(k + 1):
                         if l < fixed_steps:
                             fixed_incr = j * fixed_steps + l
@@ -366,21 +461,55 @@ class MPC(Manager):
                             var_ind_pos = mult_pos_level + mult_incr
                             var_ind_neg = mult_neg_level + mult_incr
 
-                        cur_constr_low[var_ind_pos] = -batt_efficiency
-                        cur_constr_low[var_ind_neg] = -1 / batt_efficiency
-                        cur_constr_high[var_ind_pos] = batt_efficiency
-                        cur_constr_high[var_ind_neg] = 1 / batt_efficiency
+                        # cur_constr_low[var_ind_pos] = -batt_efficiency
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind_pos)
+                        A_ub_val.append(-batt_efficiency)
+                        # cur_constr_low[var_ind_neg] = -1 / batt_efficiency
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind_neg)
+                        A_ub_val.append(-1 / batt_efficiency)
 
                     equal_constr_low = soc_init[j]
+                    # soc_low_constr_ub.append(cur_constr_low)
+                    cur_ub_row += 1
+                    soc_low_equal_ub.append(equal_constr_low)
+        for i in range(num_scenarios):
+            for j in range(num_buildings):
+                for k in range(horizon):
+                    # cur_constr_high = np.zeros((num_var,), dtype=float)
+                    for l in range(k + 1):
+                        if l < fixed_steps:
+                            fixed_incr = j * fixed_steps + l
+                            var_ind_pos = fixed_pos_level + fixed_incr
+                            var_ind_neg = fixed_neg_level + fixed_incr
+                        else:
+                            ind_to_add = l - fixed_steps
+                            mult_incr = (
+                                i * non_fixed_steps * num_buildings
+                                + j * non_fixed_steps
+                                + ind_to_add
+                            )
+
+                            var_ind_pos = mult_pos_level + mult_incr
+                            var_ind_neg = mult_neg_level + mult_incr
+                        # cur_constr_high[var_ind_pos] = batt_efficiency
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind_pos)
+                        A_ub_val.append(batt_efficiency)
+                        # cur_constr_high[var_ind_neg] = 1 / batt_efficiency
+                        A_ub_row.append(cur_ub_row)
+                        A_ub_col.append(var_ind_neg)
+                        A_ub_val.append(1 / batt_efficiency)
+
                     equal_constr_high = batt_capacity[j] - soc_init[j]
 
-                    soc_low_constr_ub.append(cur_constr_low)
-                    soc_low_equal_ub.append(equal_constr_low)
-
-                    soc_high_constr_ub.append(cur_constr_high)
+                    # soc_high_constr_ub.append(cur_constr_high)
+                    cur_ub_row += 1
                     soc_high_equal_ub.append(equal_constr_high)
 
         c = np.array(obj_func, dtype=float)
+        """
         A_ub = np.array(
             carb_pos_constr_ub
             + price_pos_constr_ub
@@ -388,6 +517,7 @@ class MPC(Manager):
             + soc_high_constr_ub,
             dtype=float,
         )
+        """
         b_ub = np.array(
             carb_pos_equal_ub
             + price_pos_equal_ub
@@ -395,7 +525,7 @@ class MPC(Manager):
             + soc_high_equal_ub,
             dtype=float,
         )
-
+        """
         A_eq = np.array(
             carb_calc_constr_eq
             + price_calc_constr_eq
@@ -403,6 +533,7 @@ class MPC(Manager):
             + grid_calc_constr_eq,
             dtype=float,
         )
+        """
         b_eq = np.array(
             carb_calc_equal_eq
             + price_calc_equal_eq
@@ -440,20 +571,19 @@ class MPC(Manager):
             + [(0, None) for _ in range(rest_positive)]
         )
         """
-        """
-        res = linprog(
+        A_ub_sp = [np.array(A_ub_val), np.array(A_ub_row), np.array(A_ub_col)]
+        A_eq_sp = [np.array(A_eq_val), np.array(A_eq_row), np.array(A_eq_col)]
+
+        x = scipy_to_gurobi(
             c,
-            A_ub=A_ub,
+            A_ub=None,
             b_ub=b_ub,
-            A_eq=A_eq,
+            A_eq=None,
             b_eq=b_eq,
             bounds=bounds,
-            options={  # "maxiter":10,
-                # "disp": True
-            },
+            A_ub_sp=A_ub_sp,
+            A_eq_sp=A_eq_sp,
         )
-        """
-        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
         # soc_power.append(res)
         # print(res)
         actions = list()
@@ -462,8 +592,8 @@ class MPC(Manager):
             for j in range(fixed_steps):
                 power_batteries[i].append(
                     (
-                        res.x[fixed_pos_level + i * fixed_steps + j]
-                        + res.x[fixed_neg_level + i * fixed_steps + j]
+                        x[fixed_pos_level + i * fixed_steps + j]
+                        + x[fixed_neg_level + i * fixed_steps + j]
                     )
                 )
 
@@ -476,7 +606,7 @@ class MPC(Manager):
             actions.append([action])
         actions = np.array(actions)
 
-        fun_score = res.fun + 1 / 6
+        # fun_score = res.fun + 1 / 6
         # Debug single forecast MPC with scores and all
         if False:
             ### Debug
@@ -592,6 +722,86 @@ def log_fixed_powers(time_step, file_name, power_batteries):
         pow_file.write(line)
 
     pow_file.close()
+
+
+def make_sparse(A):
+    A_flat = A.flatten()
+
+    row_A_ub = np.repeat(np.arange(A.shape[0]), A.shape[1])
+    col_A_ub = row_A_ub.reshape(A.shape[1], A.shape[0], order="F").ravel()
+
+    # np.repeat(np.arange(A.shape[1]), A.shape[1]).reshape(
+    #    A.shape[1], A.shape[1], order="F"
+    # ).ravel()
+    # .reshape(3,3,order='F').ravel()
+
+    row_A_ub = np.zeros(A_flat.size)
+    col_A_ub = np.zeros(A_flat.size)
+    for i in range(A.shape[0]):
+        for j in range(A.shape[1]):
+            index = i * A.shape[0] + j
+            row_A_ub[index] = i
+            col_A_ub[index] = j
+
+    A_sparse = sp.csr_matrix((A_flat, (row_A_ub, col_A_ub)), shape=A.shape)
+    return A_sparse
+
+
+def scipy_to_gurobi(c, A_ub, b_ub, A_eq, b_eq, bounds, A_ub_sp, A_eq_sp):
+    m = create_model()
+    # Create variables
+    lb = [i[0] if i[0] is not None else -GRB.INFINITY for i in bounds]
+    ub = [i[1] if i[1] is not None else GRB.INFINITY for i in bounds]
+    x = m.addMVar(shape=len(bounds), lb=lb, ub=ub, vtype=GRB.CONTINUOUS, name="x")
+
+    # Set objective
+    obj = c
+    m.setObjective(obj @ x, GRB.MINIMIZE)
+
+    bound_len = len(bounds)
+    A_ub_sparsed, A_eq_sparsed = sparsed_time(A_ub_sp, A_eq_sp, bound_len)
+
+    # Add constraints
+    # m.addConstr(A_ub_sparsed @ x <= b_ub, name="c1")
+    # m.addConstr(A_eq_sparsed @ x == b_eq, name="c2")
+    add_constraints(A_ub_sparsed, b_ub, A_eq_sparsed, b_eq, x, m)
+
+    # Optimize model
+    solve_problem(m)
+    return x.X
+
+
+def create_model():
+    # Create a new model
+    m = gp.Model("matrix1")
+    m.Params.LogToConsole = 0
+    return m
+
+
+def add_constraints(A_ub_sparsed, b_ub, A_eq_sparsed, b_eq, x, m):
+    m.addConstr(A_ub_sparsed @ x <= b_ub, name="c1")
+    m.addConstr(A_eq_sparsed @ x == b_eq, name="c2")
+
+
+def solve_problem(m):
+    m.optimize()
+
+
+def sparsed_time(A_ub_sp, A_eq_sp, bound_len):
+    # Build (sparse) constraint matrix
+    row_eq_len = max(A_eq_sp[1]) + 1
+    row_ub_len = max(A_ub_sp[1]) + 1
+    col_leng = bound_len
+
+    A_ub_sparsed = sp.csr_matrix(
+        (A_ub_sp[0], (A_ub_sp[1], A_ub_sp[2])), shape=(row_ub_len, col_leng)
+    )
+    # A_ub_to_comp = A_ub_sparsed.todense()
+    A_eq_sparsed = sp.csr_matrix(
+        (A_eq_sp[0], (A_eq_sp[1], A_eq_sp[2])), shape=(row_eq_len, col_leng)
+    )
+    return A_ub_sparsed, A_eq_sparsed
+    pass
 
 
 if __name__ == "__main__":
