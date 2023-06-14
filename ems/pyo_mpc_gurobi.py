@@ -4,14 +4,17 @@ import numpy as np
 import pandas as pd
 from ems.logger_manager import log_real_power, log_scenarios
 from ems.manager import Manager
-import pyomo.environ as pyo
 from pyomo.util.infeasible import log_infeasible_constraints
-import pyomo.kernel as pmo
+import gurobipy as gp
+from gurobipy import GRB
+
 
 # import logging
+class ModelAttributes(object):
+    pass
 
 
-class PyoMPC(Manager):
+class GurobiMPC(Manager):
     def __init__(self, fixed_steps, weight_step="equal", steps_skip=1, file_name=None):
         super().__init__()
 
@@ -22,155 +25,126 @@ class PyoMPC(Manager):
         self.steps_skip = steps_skip
         self.steps_cache = [[] for _ in range(steps_skip)]
 
-        self.model = pyo.ConcreteModel()
+        self.model = gp.Model("citylearn+mpc")
+        self.model.Params.LogToConsole = 0
+        self.model_att = ModelAttributes()
+
         self.model_initialized = False
 
-        self.opt = pyo.SolverFactory(
-            "gurobi_persistent",
-            options={
-                # "OutputFlag": 1,
-                "LogToConsole": 1,
-            },
-        )
-
     def build_sets(self, horizon, num_batts, num_scen, fixed_steps):
-        model = self.model
-        time = np.array([i for i in range(horizon)])
-        batt_id = np.array([i for i in range(num_batts)])
-        scen_id = np.array([i for i in range(num_scen)])
-        fixed_step = np.array([i for i in range(fixed_steps)])
-        mult_step = np.array([i for i in range(fixed_steps, horizon)])
-
-        model.time = pyo.Set(initialize=time)
-        model.batt_id = pyo.Set(initialize=batt_id)
-        model.scen_id = pyo.Set(initialize=scen_id)
-        model.fixed_step = pyo.Set(initialize=fixed_step)
-        model.mult_step = pyo.Set(initialize=mult_step)
-
-    def build_params(self):
-        model = self.model
-        model.soc_init = pyo.Param(model.batt_id)
-
-        model.last_step_batt_sum = pyo.Param()
-
-        model.price_cost = pyo.Param(model.time)
-
-        model.carb_cost = pyo.Param(model.time)
-
-        model.base_grid = pyo.Param(model.scen_id)
-
-        model.base_carb = pyo.Param(model.scen_id)
-
-        model.base_price = pyo.Param(model.scen_id)
-
-        model.forec_scenarios = pyo.Param(model.scen_id, model.batt_id, model.time)
-
-    def build_persistant_params(
-        self,
-        soc_init,
-        last_step_batt_sum,
-        price_cost,
-        carb_cost,
-        base_grid,
-        base_carb,
-        base_price,
-        forec_scenarios,
-    ):
-        model = pyo.Block(concrete=True)
-
-        model.soc_init = pyo.Param(
-            self.model.batt_id, initialize=array_to_dict(soc_init)
-        )
-
-        model.last_step_batt_sum = pyo.Param(initialize=last_step_batt_sum)
-
-        model.price_cost = pyo.Param(
-            self.model.time, initialize=array_to_dict(price_cost)
-        )
-
-        model.carb_cost = pyo.Param(
-            self.model.time, initialize=array_to_dict(carb_cost)
-        )
-
-        model.base_grid = pyo.Param(
-            self.model.scen_id, initialize=array_to_dict(base_grid)
-        )
-
-        model.base_carb = pyo.Param(
-            self.model.scen_id, initialize=array_to_dict(base_carb)
-        )
-
-        model.base_price = pyo.Param(
-            self.model.scen_id, initialize=array_to_dict(base_price)
-        )
-
-        model.forec_scenarios = pyo.Param(
-            self.model.scen_id,
-            self.model.batt_id,
-            self.model.time,
-            initialize=three_d_array_to_dict(forec_scenarios),
-        )
-        return model
+        model_att = self.model_att
+        model_att.time = range(horizon)
+        model_att.batt_id = range(num_batts)
+        model_att.scen_id = range(num_scen)
+        model_att.fixed_step = range(fixed_steps)
+        model_att.mult_step = range(fixed_steps, horizon)
 
     def build_vars(self):
         model = self.model
+        model_att = self.model_att
 
-        model.price_obj = pyo.Var(model.scen_id, domain=pyo.PositiveReals)
-        model.carb_obj = pyo.Var(model.scen_id, domain=pyo.PositiveReals)
-        model.grid_obj = pyo.Var(model.scen_id, domain=pyo.PositiveReals)
-
-        model.fixed_pos = pyo.Var(
-            model.batt_id, model.fixed_step, domain=pyo.PositiveReals, bounds=(0, 5)
+        model_att.price_obj = model.addVars(
+            model_att.scen_id, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS
         )
-        model.fixed_neg = pyo.Var(
-            model.batt_id, model.fixed_step, domain=pyo.NegativeReals, bounds=(-5, 0)
+        model_att.carb_obj = model.addVars(
+            model_att.scen_id, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS
         )
-
-        model.mult_pos = pyo.Var(
-            model.scen_id,
-            model.batt_id,
-            model.mult_step,
-            domain=pyo.PositiveReals,
-            bounds=(0, 5),
-        )
-        model.mult_neg = pyo.Var(
-            model.scen_id,
-            model.batt_id,
-            model.mult_step,
-            domain=pyo.NegativeReals,
-            bounds=(-5, 0),
+        model_att.grid_obj = model.addVars(
+            model_att.scen_id, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS
         )
 
-        model.carb_ind_cost = pyo.Var(
-            model.scen_id, model.batt_id, model.time, domain=pyo.PositiveReals
+        model_att.fixed_pos = model.addVars(
+            model_att.batt_id,
+            model_att.fixed_step,
+            lb=0.0,
+            ub=5.0,
+            vtype=GRB.CONTINUOUS,
         )
-        model.price_ind_cost = pyo.Var(
-            model.scen_id, model.time, domain=pyo.PositiveReals
-        )
-
-        model.total_power = pyo.Var(
-            model.scen_id, model.batt_id, model.time, domain=pyo.Reals
-        )
-
-        model.grid_abs_1 = pyo.Var(model.scen_id, model.time, domain=pyo.PositiveReals)
-        model.grid_abs_2 = pyo.Var(model.scen_id, model.time, domain=pyo.PositiveReals)
-
-        model.soc_fixed = pyo.Var(
-            model.batt_id,
-            model.fixed_step,
-            domain=pyo.PositiveReals,
-            bounds=(0, 6.4),
+        model_att.fixed_neg = model.addVars(
+            model_att.batt_id,
+            model_att.fixed_step,
+            lb=-5.0,
+            ub=0.0,
+            vtype=GRB.CONTINUOUS,
         )
 
-        model.soc_mult = pyo.Var(
-            model.scen_id,
-            model.batt_id,
-            model.mult_step,
-            domain=pyo.PositiveReals,
-            bounds=(0, 6.4),
+        model_att.mult_pos = model.addVars(
+            model_att.scen_id,
+            model_att.batt_id,
+            model_att.mult_step,
+            lb=0.0,
+            ub=5.0,
+            vtype=GRB.CONTINUOUS,
+        )
+        model_att.mult_neg = model.addVars(
+            model_att.scen_id,
+            model_att.batt_id,
+            model_att.mult_step,
+            lb=-5.0,
+            ub=0.0,
+            vtype=GRB.CONTINUOUS,
         )
 
-        model.obj_cost = pyo.Var(domain=pyo.Reals)
+        model_att.carb_ind_cost = model.addVars(
+            model_att.scen_id,
+            model_att.batt_id,
+            model_att.time,
+            lb=0.0,
+            ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+        )
+        model_att.price_ind_cost = model.addVars(
+            model_att.scen_id,
+            model_att.time,
+            lb=0.0,
+            ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+        )
+
+        model_att.total_power = model.addVars(
+            model_att.scen_id,
+            model_att.batt_id,
+            model_att.time,
+            lb=-GRB.INFINITY,
+            ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+        )
+
+        model_att.grid_abs_1 = model.addVars(
+            model_att.scen_id,
+            model_att.time,
+            lb=0.0,
+            ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+        )
+        model_att.grid_abs_2 = model.addVars(
+            model_att.scen_id,
+            model_att.time,
+            lb=0.0,
+            ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS,
+        )
+
+        model_att.soc_fixed = model.addVars(
+            model_att.batt_id,
+            model_att.fixed_step,
+            lb=0.0,
+            ub=6.4,
+            vtype=GRB.CONTINUOUS,
+        )
+
+        model_att.soc_mult = model.addVars(
+            model_att.scen_id,
+            model_att.batt_id,
+            model_att.mult_step,
+            lb=0.0,
+            ub=6.4,
+            vtype=GRB.CONTINUOUS,
+        )
+
+        model_att.obj_cost = model.addVar(
+            lb=-GRB.INFINITY, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS
+        )
 
     def build_constr(
         self,
@@ -201,144 +175,126 @@ class PyoMPC(Manager):
 
     def build_obj(self):
         model = self.model
-
-        def obj_cost_rule(model):
-            return model.obj_cost
-
-        model.obj = pyo.Objective(rule=obj_cost_rule, sense=pyo.minimize)
-
-    def get_instance_data(
-        self,
-        soc_init,
-        last_step_batt_sum,
-        price_cost,
-        carb_cost,
-        base_carb,
-        base_price,
-        base_grid,
-        forec_scenarios,
-    ):
-        init_data_dict = {None: dict()}
-
-        init_data_dict[None]["soc_init"] = array_to_dict(soc_init)
-        init_data_dict[None]["last_step_batt_sum"] = {None: last_step_batt_sum}
-        init_data_dict[None]["price_cost"] = array_to_dict(price_cost)
-        init_data_dict[None]["carb_cost"] = array_to_dict(carb_cost)
-        init_data_dict[None]["base_grid"] = array_to_dict(base_grid)
-        init_data_dict[None]["base_carb"] = array_to_dict(base_carb)
-        init_data_dict[None]["base_price"] = array_to_dict(base_price)
-        init_data_dict[None]["forec_scenarios"] = three_d_array_to_dict(forec_scenarios)
-
-        return init_data_dict
+        model_att = self.model_att
+        model.setObjective(model_att.obj_cost, GRB.MINIMIZE)
 
     def set_total_power_constr(self, forec_scenarios):
         # Set variable with the summed power of consumptiona nd battery
         model = self.model
-        scen_id = model.scen_id
-        batt_id = model.batt_id
-        fixed_step = model.fixed_step
-        mult_step = model.mult_step
+        model_att = self.model_att
+        scen_id = model_att.scen_id
+        batt_id = model_att.batt_id
+        fixed_step = model_att.fixed_step
+        mult_step = model_att.mult_step
 
-        def rule_total_power_fixed(model, s, b, t):
-            batt_power = model.fixed_pos[b, t] + model.fixed_neg[b, t]
-            return model.total_power[s, b, t] == (batt_power + forec_scenarios[s][b][t])
-
-        model.total_power_fixed = pyo.Constraint(
-            scen_id,
-            batt_id,
-            fixed_step,
-            rule=rule_total_power_fixed,
+        # Total power fixed
+        for s in scen_id:
+            for b in batt_id:
+                for t in fixed_step:
+                    batt_power = model_att.fixed_pos[b, t] + model_att.fixed_neg[b, t]
+                    model.addConstr(
+                        model_att.total_power[s, b, t]
+                        == (batt_power + forec_scenarios[s][b][t])
+                    )
+        """
+        model.addConstrs(
+            model_att.total_power[s, b, t]
+            == model_att.fixed_pos[b, t]
+            + model_att.fixed_neg[b, t]
+            + forec_scenarios[s][b][t]
+            for s in scen_id
+            for b in batt_id
+            for t in fixed_step
         )
-
-        def rule_total_power_mult(model, s, b, t):
-            batt_power = model.mult_pos[s, b, t] + model.mult_neg[s, b, t]
-            return model.total_power[s, b, t] == (batt_power + forec_scenarios[s, b, t])
-
-        model.total_power_mult = pyo.Constraint(
-            scen_id,
-            batt_id,
-            mult_step,
-            rule=rule_total_power_mult,
+        model.addConstrs(
+            model_att.total_power[s, b, t]
+            == model_att.mult_pos[s, b, t]
+            + model_att.mult_neg[s, b, t]
+            + forec_scenarios[s][b][t]
+            for s in scen_id
+            for b in batt_id
+            for t in mult_step
         )
+        """
+        # Total power mult
+        for s in scen_id:
+            for b in batt_id:
+                for t in mult_step:
+                    batt_power = (
+                        model_att.mult_pos[s, b, t] + model_att.mult_neg[s, b, t]
+                    )
+                    model.addConstr(
+                        model_att.total_power[s, b, t]
+                        == (batt_power + forec_scenarios[s, b, t])
+                    )
 
     def carbon_pos_constr(self, carb_cost):
         # Set carbon cost to be positive
         # forall s,b,t batt_power[s,b,t]-carb_pow[s,b,t]/carb_cost[t]<=-baseload[s,b,t]
         # or (batt_power[s,b,t]+baseload[s,b,t])*carb_cost[t]<=carb_ind_cost[s,b,t]
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
-        batt_id = model.batt_id
-        time = model.time
+        scen_id = model_att.scen_id
+        batt_id = model_att.batt_id
+        time = model_att.time
 
-        def rule_carb_cost(model, s, b, t):
-            return (
-                model.carb_ind_cost[s, b, t]
-                >= model.total_power[s, b, t] * carb_cost[t]
-            )
-
-        model.carb_cost_fixed = pyo.Constraint(
-            scen_id,
-            batt_id,
-            time,
-            rule=rule_carb_cost,
-        )
+        # Carb cost
+        for s in scen_id:
+            for b in batt_id:
+                for t in time:
+                    model.addConstr(
+                        model_att.carb_ind_cost[s, b, t]
+                        >= model_att.total_power[s, b, t] * carb_cost[t]
+                    )
 
     def sum_carb_cost_constr(self, base_carb):
         # Sum all carbon costs to get the final carbon cost per scenario.
         # forall s carbon_obj[s] = sum_[b,t] {carb_ind_cost[s,b,t]}
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
+        scen_id = model_att.scen_id
 
-        def rule_sum_carb_cost(model, s):
+        # Sum_carb_cost
+        for s in scen_id:
             tot_carb_cost = sum(
-                model.carb_ind_cost[s, b, t] for b in model.batt_id for t in model.time
+                model_att.carb_ind_cost[s, b, t]
+                for b in model_att.batt_id
+                for t in model_att.time
             )
-            return model.carb_obj[s] == tot_carb_cost / base_carb[s]
-
-        model.sum_carb_cost = pyo.Constraint(
-            scen_id,
-            rule=rule_sum_carb_cost,
-        )
+            model.addConstr(model_att.carb_obj[s] == tot_carb_cost / base_carb[s])
 
     def price_pos_constr(self, price_cost):
         # Set price cost to be positive
         # forall s,t sum_b{batt_power[s,b,t]}-price_ind_cost[s,t]/price_cost[t]<=sum_b{-baseload[s,b,t]}
         # or sum_b{batt_power[s,b,t]+baseload[s,b,t]}*price_cost[t]<=price_ind_cost[s,t]
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
-        time = model.time
+        scen_id = model_att.scen_id
+        time = model_att.time
 
-        def rule_price_cost_fixed(model, s, t):
-            return (
-                model.price_ind_cost[s, t]
-                >= sum(model.total_power[s, b, t] for b in model.batt_id)
-                * price_cost[t]
-            )
-
-        model.price_cost_fixed = pyo.Constraint(
-            scen_id,
-            time,
-            rule=rule_price_cost_fixed,
-        )
+        # Price cost fixed
+        for s in scen_id:
+            for t in time:
+                model.addConstr(
+                    model_att.price_ind_cost[s, t]
+                    >= sum(model_att.total_power[s, b, t] for b in model_att.batt_id)
+                    * price_cost[t]
+                )
 
     def sum_price_cost_constr(self, base_price):
         # Sum all price costs to get the final price cost per scenario.
         # forall s tot_price[s] = sum_[t]{price_ind_cost[s,t]}
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
+        scen_id = model_att.scen_id
 
-        def rule_sum_price_cost(model, s):
-            tot_price_cost = sum(model.price_ind_cost[s, t] for t in model.time)
-            return model.price_obj[s] == tot_price_cost / base_price[s]
-
-        model.sum_price_cost = pyo.Constraint(
-            scen_id,
-            rule=rule_sum_price_cost,
-        )
+        for s in scen_id:
+            tot_price_cost = sum(model_att.price_ind_cost[s, t] for t in model_att.time)
+            model.addConstr(model_att.price_obj[s] == tot_price_cost / base_price[s])
 
     def absolute_grid_diff_constr(self, last_step_batt_sum):
         # Get the absolute difference between the previous and current power of all timesteps
@@ -346,158 +302,101 @@ class PyoMPC(Manager):
         # Implementation most time step sum_b{-batt_pow[s,b,t]+batt_pow[s,b,t-1]}+abs1[s,t]-abs2[s,t]= forec[s,t]-forec[s,t-1]
         # Implementation first time step sum_b{-batt_pow[s,b,t]}+abs1[s,t]-abs2[s,t]=forec[s,t]-last_step_pow
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
-        time = model.time
+        scen_id = model_att.scen_id
+        time = model_att.time
 
-        def rule_abs_diff(model, s, t):
-            if t == 0:
-                prev_power = last_step_batt_sum
-                weight_grid = 1
-            else:
-                weight_grid = 1
-                prev_power = sum(model.total_power[s, b, t - 1] for b in model.batt_id)
-            return prev_power - sum(
-                model.total_power[s, b, t] for b in model.batt_id
-            ) == weight_grid * (model.grid_abs_1[s, t] - model.grid_abs_2[s, t])
-
-        model.abs_diff = pyo.Constraint(
-            scen_id,
-            time,
-            rule=rule_abs_diff,
-        )
+        # Abs diff
+        for s in scen_id:
+            for t in time:
+                if t == 0:
+                    prev_power = last_step_batt_sum
+                    weight_grid = 1
+                else:
+                    weight_grid = 1
+                    prev_power = sum(
+                        model_att.total_power[s, b, t - 1] for b in model_att.batt_id
+                    )
+                model.addConstr(
+                    prev_power
+                    - sum(model_att.total_power[s, b, t] for b in model_att.batt_id)
+                    == weight_grid
+                    * (model_att.grid_abs_1[s, t] - model_att.grid_abs_2[s, t])
+                )
 
     def sum_grid_cost_constr(self, base_grid):
         # Sum up grid cost for each scenario
         # Sum all grid costs to get the final frid cost per scenario.
         # forall s tot_grid[s] = sum_[t]{abs1[s,t]+abs2[s,t]}
         model = self.model
+        model_att = self.model_att
 
-        scen_id = model.scen_id
+        scen_id = model_att.scen_id
+        # Sum grid cost
 
-        def rule_sum_grid_cost(model, s):
+        for s in scen_id:
             tot_grid_cost = sum(
-                model.grid_abs_1[s, t] + model.grid_abs_2[s, t] for t in model.time
+                model_att.grid_abs_1[s, t] + model_att.grid_abs_2[s, t]
+                for t in model_att.time
             )
-            return model.grid_obj[s] == tot_grid_cost / base_grid[s]
-
-        model.sum_grid_cost = pyo.Constraint(
-            scen_id,
-            rule=rule_sum_grid_cost,
-        )
+            model.addConstr(model_att.grid_obj[s] == tot_grid_cost / base_grid[s])
 
     def soc_constr(self, batt_eff, soc_init):
         model = self.model
-        scen_id = model.scen_id
-        batt_id = model.batt_id
-        fixed_step = model.fixed_step
-        mult_step = model.mult_step
+        model_att = self.model_att
 
-        def rule_soc_fixed(model, b, t):
-            if t == 0:
-                soc_prev = soc_init[b]
-            else:
-                soc_prev = model.soc_fixed[b, t - 1]
+        scen_id = model_att.scen_id
+        batt_id = model_att.batt_id
+        fixed_step = model_att.fixed_step
+        mult_step = model_att.mult_step
 
-            return (
-                model.soc_fixed[b, t]
-                == soc_prev
-                + model.fixed_pos[b, t] * batt_eff
-                + model.fixed_neg[b, t] / batt_eff
-            )
+        # Soc fixed
+        for b in batt_id:
+            for t in fixed_step:
+                if t == 0:
+                    soc_prev = soc_init[b]
+                else:
+                    soc_prev = model_att.soc_fixed[b, t - 1]
+                model.addConstr(
+                    model_att.soc_fixed[b, t]
+                    == soc_prev
+                    + model_att.fixed_pos[b, t] * batt_eff
+                    + model_att.fixed_neg[b, t] / batt_eff
+                )
 
-        model.set_soc_fixed = pyo.Constraint(
-            batt_id,
-            fixed_step,
-            rule=rule_soc_fixed,
-        )
-
-        def rule_soc_mult(model, s, b, t):
-            if t == model.mult_step[0]:
-                soc_prev = model.soc_fixed[b, t]
-            else:
-                soc_prev = model.soc_mult[s, b, t - 1]
-
-            return (
-                model.soc_mult[s, b, t]
-                == soc_prev
-                + model.mult_pos[s, b, t] * batt_eff
-                + model.mult_neg[s, b, t] / batt_eff
-            )
-
-        model.set_soc_mult = pyo.Constraint(
-            scen_id,
-            batt_id,
-            mult_step,
-            rule=rule_soc_mult,
-        )
+        # Soc mult
+        for s in scen_id:
+            for b in batt_id:
+                for t in mult_step:
+                    if t == model_att.mult_step[0]:
+                        soc_prev = model_att.soc_fixed[b, t]
+                    else:
+                        soc_prev = model_att.soc_mult[s, b, t - 1]
+                    model.addConstr(
+                        model_att.soc_mult[s, b, t]
+                        == soc_prev
+                        + model_att.mult_pos[s, b, t] * batt_eff
+                        + model_att.mult_neg[s, b, t] / batt_eff
+                    )
 
     def obj_cost_constr(self):
         model = self.model
+        model_att = self.model_att
 
-        def obj_cost_rule(model):
-            return model.obj_cost == sum(
-                model.carb_obj[s] + model.price_obj[s] + model.grid_obj[s] / 2
-                for s in model.scen_id
+        model.addConstr(
+            model_att.obj_cost
+            == sum(
+                model_att.carb_obj[s]
+                + model_att.price_obj[s]
+                + model_att.grid_obj[s] / 2
+                for s in model_att.scen_id
             )
-
-        model.set_obj_cost = pyo.Constraint(
-            rule=obj_cost_rule,
         )
 
-    def opt_model_remove_constr(self):
-        constraints = [
-            self.model.abs_diff,
-            self.model.carb_cost_fixed,
-            self.model.price_cost_fixed,
-            self.model.set_soc_fixed,
-            self.model.set_soc_mult,
-            self.model.sum_carb_cost,
-            self.model.sum_grid_cost,
-            self.model.sum_price_cost,
-            self.model.total_power_fixed,
-            self.model.total_power_mult,
-        ]
-
-        model = self.model
-        opt = self.opt
-        for constr in constraints:
-            for v in constr.values():
-                opt.remove_constraint(v)
-                model.del_component(v)
-            model.del_component(constr)
-
-            # opt.remove_constraint(constr)
-            # del constr
-        indexes_to_del = [
-            self.model.abs_diff_index,
-            self.model.carb_cost_fixed_index,
-            self.model.price_cost_fixed_index,
-            self.model.set_soc_fixed_index,
-            self.model.set_soc_mult_index,
-            self.model.total_power_fixed_index,
-            self.model.total_power_mult_index,
-        ]
-        for ind in indexes_to_del:
-            model.del_component(ind)
-
-    def opt_add_constraints(self):
-        constraints = [
-            self.model.abs_diff,
-            self.model.carb_cost_fixed,
-            self.model.price_cost_fixed,
-            self.model.set_soc_fixed,
-            self.model.set_soc_mult,
-            self.model.sum_carb_cost,
-            self.model.sum_grid_cost,
-            self.model.sum_price_cost,
-            self.model.total_power_fixed,
-            self.model.total_power_mult,
-        ]
-        opt = self.opt
-        for constr in constraints:
-            for v in constr.values():
-                opt.add_constraint(v)
+    def model_remove_constr(self):
+        for c in self.model.getConstrs():
+            self.model.remove(c)
 
     def calculate_powers(self, observation, forec_scenarios, time_step):
         index_cache = time_step % self.steps_skip
@@ -588,32 +487,7 @@ class PyoMPC(Manager):
             base_grid.append(base_grid_cost)
 
         if not self.model_initialized:
-            # self.model = pyo.ConcreteModel()
-
-            """
-            self.opt = pyo.SolverFactory(
-                "gurobi",
-                options={
-                    # "OutputFlag": 1,
-                    "LogToConsole": 1,
-                },
-            )
-            """
-            # self.model = pyo.ConcreteModel()
             self.build_sets(horizon, num_batts, num_scenarios, fixed_steps)
-            # self.build_params()
-            """param_block = self.build_persistant_params(
-                soc_init,
-                last_step_batt_sum,
-                price_cost,
-                carb_cost,
-                base_grid,
-                base_carb,
-                base_price,
-                forec_scenarios,
-            )"""
-
-            # self.model.add_component("params", param_block)
 
             self.build_vars()
 
@@ -631,24 +505,9 @@ class PyoMPC(Manager):
             self.build_obj()
             self.model_initialized = True
 
-            """
-            instance_data = self.get_instance_data(
-                soc_init,
-                last_step_batt_sum,
-                price_cost,
-                carb_cost,
-                base_carb,
-                base_price,
-                base_grid,
-                forec_scenarios,
-            )
-            """
-
-            self.opt.set_instance(self.model)
-            self.result_model = deepcopy(self.model)
         else:
             # self.opt.reset()
-            self.opt_model_remove_constr()
+            self.model_remove_constr()
             self.build_constr(
                 batt_efficiency,
                 forec_scenarios,
@@ -660,7 +519,8 @@ class PyoMPC(Manager):
                 base_grid,
                 soc_init,
             )
-            self.opt_add_constraints()
+            # self.model.update()
+            # self.opt_add_constraints()
             """
             param_block = self.build_persistant_params(
                 soc_init,
@@ -682,9 +542,8 @@ class PyoMPC(Manager):
         # res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
         # soc_power.append(res)
 
-        result = self.opt.solve()
+        self.model.optimize()
 
-        self.model.solutions.load_from(result)
         # self.opt.solve(model_inst)
         # log_infeasible_constraints(self.model)
         # logging.basicConfig(
@@ -695,8 +554,8 @@ class PyoMPC(Manager):
 
         for b in range(num_batts):
             for t in range(fixed_steps):
-                batt_pos = pyo.value(self.model.fixed_pos[b, t])
-                batt_neg = pyo.value(self.model.fixed_neg[b, t])
+                batt_pos = self.model_att.fixed_pos[b, t].X
+                batt_neg = self.model_att.fixed_neg[b, t].X
                 power_batteries[b].append(batt_pos + batt_neg)
 
             # Cache actions
