@@ -7,6 +7,8 @@ from forecast.scenarios_lean import Scenario_Generator
 from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
+from ems.gurobi_mpc import GurobiMPC
+from ems.gurobi_matrix_mpc import GurobiMatrixMPC
 
 from utils.util_functions import MyLinearRegression
 
@@ -152,8 +154,8 @@ if __name__ == "__main__":
         scenario_gen = RealForecast()
         manager = MPC(0, weight_step="equal")
     elif case_study == "perfect_file_forec":
-        scenario_gen = PerfectFile(48)
-        manager = MPC(0)
+        scenario_gen = PerfectFile(24)
+        manager = GurobiMatrixMPC(0)
     elif case_study == "logging":
         type_forec = "together+naive"
         param = f"{type_forec}_{total_steps}_{phase_num}"
@@ -204,7 +206,7 @@ if __name__ == "__main__":
             steps_ahead=24,
             n_buildings=n_buildings,
         )
-        manager = MPC(0)
+        manager = GurobiMPC(0)
 
     agent_used = GeneralAgent(scenario_gen, manager)
     evaluate(agent_used, total_steps=total_steps, phase_num=phase_num)
