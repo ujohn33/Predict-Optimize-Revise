@@ -93,4 +93,5 @@ if __name__ == "__main__":
             metric_dict[metric] = float(xarray_dict[metric]['net'].mean().values)
             metric_file.write(str(metric_dict[metric]) + ',')
         metric_file.write('\n')
+        metric_file.flush()
     metric_file.close()
