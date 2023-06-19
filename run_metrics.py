@@ -65,15 +65,6 @@ if __name__ == "__main__":
     scens_unique = scens_unique.tolist()
     # get combinations of 5
     scens_combinations = list(itertools.combinations(scens_unique, 5))
-    temp_scens = scens.loc[scens['member'].isin(scens_combinations[0])]
-    temp_scens = pd.melt(temp_scens, id_vars=['init', 'member', 'building'], var_name='lead', value_name='net')
-    temp_scens['lead'] = temp_scens['lead'].str.replace('+', '').str.replace('h', '').astype(int)
-    temp_xrds = temp_scens.set_index(['init', 'member', 'building', 'lead']).to_xarray()
-    temp_xrds['lead'].attrs['units'] = 'years'
-    temp_xobs = reals.set_index(['time', 'building']).to_xarray()
-    temp_ens = climpred.HindcastEnsemble(temp_xrds)
-    temp_ens = temp_ens.add_observations(temp_xobs)
-
     xarray_dict = {}
     metric_dict = {}
 
@@ -85,6 +76,14 @@ if __name__ == "__main__":
     line = metrics
     metric_file.write(','.join(index + line) + '\n')
     for combo in scens_combinations:
+        temp_scens = scens.loc[scens['member'].isin(combo)]
+        temp_scens = pd.melt(temp_scens, id_vars=['init', 'member', 'building'], var_name='lead', value_name='net')
+        temp_scens['lead'] = temp_scens['lead'].str.replace('+', '').str.replace('h', '').astype(int)
+        temp_xrds = temp_scens.set_index(['init', 'member', 'building', 'lead']).to_xarray()
+        temp_xrds['lead'].attrs['units'] = 'years'
+        temp_xobs = reals.set_index(['time', 'building']).to_xarray()
+        temp_ens = climpred.HindcastEnsemble(temp_xrds)
+        temp_ens = temp_ens.add_observations(temp_xobs)
         # write the index of the scenario to the csv
         line_start = ''.join(str(e) for e in combo)
         metric_file.write(line_start + ',')
