@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
-from forecast.metrics import *
 # plot CRPS scores for each horizon
-import matplotlib.pyplot as plt
 import itertools
 import climpred
 from climpred import HindcastEnsemble, PerfectModelEnsemble
@@ -44,7 +42,7 @@ def calculate_cv_standard_variation(
 # if main
 if __name__ == "__main__":
     # open csv file for scenarios
-    scens = pd.read_csv('debug_logs/scenarios_together+naive_9000_1.csv')
+    scens = pd.read_csv('debug_logs/scenarios_together+naive_9000_2.csv')
     scens = scens.set_index(['time_step', 'building'], drop=False)
     # remove rows with time_step 8759
     scens = scens[scens['time_step'] != 8759]
@@ -53,7 +51,7 @@ if __name__ == "__main__":
     # rename time_step to init
     scens = scens.rename(columns={'time_step': 'init', 'scenario': 'member'})
 
-    reals = pd.read_csv('debug_logs/real_power_together+naive_9000_1.csv')
+    reals = pd.read_csv('debug_logs/real_power_together+naive_9000_2.csv')
     # rename time_step to time
     reals = reals.rename(columns={'time_step': 'time'})
     reals = reals.iloc[1:, :]
@@ -68,6 +66,8 @@ if __name__ == "__main__":
     # get combinations of 5
     scens_combinations = list(itertools.combinations(scens_unique, 5))
     temp_scens = scens.loc[scens['member'].isin(scens_combinations[0])]
+    temp_scens = pd.melt(temp_scens, id_vars=['init', 'member', 'building'], var_name='lead', value_name='net')
+    temp_scens['lead'] = temp_scens['lead'].str.replace('+', '').str.replace('h', '').astype(int)
     temp_xrds = temp_scens.set_index(['init', 'member', 'building', 'lead']).to_xarray()
     temp_xrds['lead'].attrs['units'] = 'years'
     temp_xobs = reals.set_index(['time', 'building']).to_xarray()
@@ -89,7 +89,10 @@ if __name__ == "__main__":
         line_start = ''.join(str(e) for e in combo)
         metric_file.write(line_start + ',')
         for metric in metrics:
-            xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='m2o', dim=['member','init', 'building'], alignment='same_inits').assign_coords(metric=metric.upper())
+            if metric == 'threshold_brier_score':
+                xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='m2o', dim=['member','init', 'building'], threshold=0, alignment='same_inits').assign_coords(metric=metric.upper())
+            else:
+                xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='m2o', dim=['member','init', 'building'], alignment='same_inits').assign_coords(metric=metric.upper())
             metric_dict[metric] = float(xarray_dict[metric]['net'].mean().values)
             metric_file.write(str(metric_dict[metric]) + ',')
         metric_file.write('\n')
