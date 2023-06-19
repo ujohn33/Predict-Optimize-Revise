@@ -9,9 +9,6 @@ from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 from ems.gurobi_mpc import GurobiMPC
 from ems.gurobi_matrix_mpc import GurobiMatrixMPC
-
-from utils.util_functions import MyLinearRegression
-
 """
 Please do not make changes to this file. 
 This is only a reference script provided to allow you 
