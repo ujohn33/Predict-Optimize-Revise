@@ -39,6 +39,8 @@ def calculate_cv_standard_variation(
     smoothness = np.std(diff) - abs(np.mean(diff))
     return smoothness
 
+
+
 # if main
 if __name__ == "__main__":
     # open csv file for scenarios
@@ -60,6 +62,10 @@ if __name__ == "__main__":
     reals['building'] = reals['building'].str[-1].astype(int)
     reals = reals[reals['time'] != -1]
 
+    # take only the first 200 rows in scens and reals
+    scens = scens.loc[scens['init'] <= 400]
+    reals = reals.loc[reals['time'] <= 400]
+
     # take unique scenario numbers if scens and get a list of lists with unique combinations of 5 that exist
     scens_unique = scens['member'].unique()
     scens_unique = scens_unique.tolist()
@@ -68,9 +74,9 @@ if __name__ == "__main__":
     xarray_dict = {}
     metric_dict = {}
 
-    metrics = ['mae', 'rmse', 'acc', 'nrmse', 'nmae', 'smape', 'crps', 'crpss', 'crpss_es', 'threshold_brier_score', 'less']
+    metrics = ['mae_ens', 'rmse_ens', 'nrmse_ens', 'nmae_ens', 'mae', 'rmse', 'acc', 'nrmse', 'nmae', 'smape', 'crps', 'spread', 'crpss_es', 'threshold_brier_score', 'less']
     # start a csv with metrics as columns
-    metric_file = open('metrics.csv', 'w+')
+    metric_file = open('metrics_spread.csv', 'w+')
     # metrics as columns
     index = ['unique_id']
     line = metrics
@@ -90,6 +96,9 @@ if __name__ == "__main__":
         for metric in metrics:
             if metric == 'threshold_brier_score':
                 xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='m2o', dim=['member','init', 'building'], threshold=0, alignment='same_inits').assign_coords(metric=metric.upper())
+            elif metric in ['mae_ens', 'rmse_ens', 'nrmse_ens', 'nmae_ens']:
+                metric = metric.replace('_ens', '')
+                xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='e2o', dim=['init', 'building'], alignment='same_inits').assign_coords(metric=metric.upper())
             else:
                 xarray_dict[metric] = temp_ens.verify(metric=metric, comparison='m2o', dim=['member','init', 'building'], alignment='same_inits').assign_coords(metric=metric.upper())
             metric_dict[metric] = float(xarray_dict[metric]['net'].mean().values)

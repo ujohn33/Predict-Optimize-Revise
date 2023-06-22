@@ -91,8 +91,10 @@ class ScenarioFile:
     def generate_scenarios(self, prev_steps, time_step):
         scenarios = list()
         steps_ahead = self.steps_ahead
-        num_buildings = len(self.scen_dict[0].keys())
-        for num_scen in range(self.n_scenarios):
+        # get the value of the first key in self.scen_dict
+        #ind = list(self.scen_dict.keys())[0]
+        num_buildings = len(self.scen_dict[list(self.scen_dict.keys())[0]].keys())
+        for num_scen in self.scen_dict.keys():
             forec_real = list()
             for num_buil in range(num_buildings):
                 scenario = self.scen_dict[num_scen][num_buil][time_step][:steps_ahead]

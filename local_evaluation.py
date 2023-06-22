@@ -135,13 +135,18 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
             ]
         )
         print("Average Total Cost:", total_cost / 3)
+        tc = total_cost / 3
+        apc = np.mean([e["price_cost"] for e in episode_metrics])
+        aec = np.mean([e["emmision_cost"] for e in episode_metrics])
+        agc = np.mean([e["grid_cost"] for e in episode_metrics])
+        return tc, apc, aec, agc
     print(f"Total time taken by agent: {agent_time_elapsed}s")
 
 
 if __name__ == "__main__":
     case_study = "logging"
     phase_num = 2
-    total_steps = 9000
+    total_steps = 400
     n_scen = 10
     if phase_num == 3:
         n_buildings = 7
