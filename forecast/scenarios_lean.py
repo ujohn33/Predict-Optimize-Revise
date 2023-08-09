@@ -135,7 +135,6 @@ class Scenario_Generator:
             if current_depth > robust_horizon:
                 parent_prediction_list = []
                 for i in range(robust_depth):
-                    print(i)
                     parent_prediction_list.append(
                         self.forecast_live.get_point_forecast_step(
                             current_depth + i, id_param, last_param))
@@ -144,6 +143,7 @@ class Scenario_Generator:
             lead_hour = (current_hour + current_depth + 1) % 24
             std = self.variance_dict[current_hour][lead_hour]
             resids = norm(loc=0, scale=std).rvs(2)
+            resids = resids * (self.forecast_live.net_max_dict[id_param] - self.forecast_live.net_min_dict[id_param]) 
             parent_prediction = self.forecast_live.get_point_forecast_step(
                         current_depth, id_param, last_param)     
             left_child_lag = parent_prediction + resids[0]
