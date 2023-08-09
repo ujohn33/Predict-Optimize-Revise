@@ -135,7 +135,6 @@ class Forecast:
         self.net_min_dict[id] = min(self.net_min_dict[id], last_val)
         self.net_max_dict[id] = max(self.net_max_dict[id], last_val)
 
-
     def forecast_next_step_for_B(self, id: int, step, last_param=False):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
         #  'net_target-1', 'diffuse_solar_radiation+1', 'direct_solar_radiation+1',
@@ -249,7 +248,6 @@ class Forecast:
         """
         #forec = [i[0] for i in forec]
         return forec_denorm
-
 
     def get_point_forecast_step(self, step: int, id: int, last_param=False):
         # ['Month', 'Hour', 'hour_x', 'hour_y', 'month_x', 'month_y',
@@ -368,13 +366,13 @@ class Forecast:
         else:
             # add a value to a prediction vector
             forec = self.model_pt.predict(X.reshape(1, -1))
-        #forec = self.model_pt.predict(X.reshape(1, -1))
+        # forec = self.model_pt.predict(X.reshape(1, -1))
         # denormalize the values
         forec = self.min_max_denormalize(
             forec, self.net_min_dict[id], self.net_max_dict[id]
         )
         forec = forec[0]
-        #print(forec)
+        # print(forec)
         return forec
 
     # def get_point_and_variance(self, step: int, id: int, last_param=False, n_scen=10, dist_type = 'gmm'):

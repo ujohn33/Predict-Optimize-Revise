@@ -1,21 +1,21 @@
 import numpy as np
 import joblib
-import pandas as pd
 import sys
 import matplotlib.pyplot as plt
-from scipy.stats import norm, multivariate_normal
 # import Forecast class from forecast-function.py
 from forecast.forecast_functions import Forecast
-from forecast.file import PerfectFile, RealForecast, ScenarioFile
-from forecast.metrics import crps
-import random
+from forecast.file import ScenarioFile
+from scipy.stats import norm
+
 
 def debugger_is_active() -> bool:
     """Return if the debugger is currently active"""
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
 
+
 class Scenario_Generator:
-    def __init__(self,  forec_file: str, type='norm_noise', n_scenarios=10, n_buildings=5, steps_ahead=24):
+    def __init__(self,  type='norm_noise', n_scenarios=10, 
+                 n_buildings=5, steps_ahead=24, forec_file=None):
         self.type = type
         self.n_scenarios = n_scenarios
         self.n_buildings = n_buildings
@@ -33,16 +33,27 @@ class Scenario_Generator:
             self.net_min_dict[i] = self.net_min
             self.net_max_dict[i] = self.net_max
         self.debugger_is_active = debugger_is_active()
-        self.forecast_gen = ScenarioFile(forec_file, n_scenarios=1)
+        if forec_file is not None:
+            self.forecast_gen = ScenarioFile(forec_file, n_scenarios=1)
+        else:
+            pass
+        self.forecast_live = Forecast(n_buildings, model_dir='models/point/', 
+                                      point_forecast=True)
         if type == 'full_covariance':
             # read multivariate normal distribution from pickle file
             self.mv_norm = joblib.load('models/residuals_norm/mvn_hour.pkl')
         elif type == 'norm_noise':
+            model_src = 'models/residuals_norm/std_residuals_norm.pkl'
             # change model for steps 2 to 24 to recurrent next step model 
-            self.variance_dict = joblib.load('models/residuals_norm/std_residuals_norm.pkl')
+            self.variance_dict = joblib.load(model_src)
         elif type == 'norm_noise_online':
+            model_src = 'models/residuals_norm/std_residuals_norm.pkl'
             # change model for steps 2 to 24 to recurrent next step model 
-            self.variance_dict = joblib.load('models/residuals_norm/std_residuals_norm.pkl')
+            self.variance_dict = joblib.load(model_src)
+        elif type == 'tree_scenario':
+            model_src = 'models/residuals_norm/std_residuals_norm.pkl'
+            # change model for steps 2 to 24 to recurrent next step model 
+            self.variance_dict = joblib.load(model_src)
         self.scenarios = []
         self.logger = None 
 
@@ -63,7 +74,7 @@ class Scenario_Generator:
             self.update_min_max_scaler(prev_steps, b)
             scens_B_temp = self.generate_scenarios_for_B(self.type, b, prev_steps, current_step, horizon)
             scenarios.append(scens_B_temp)
-            #if current_step > 168:
+            # if current_step > 168:
                 # plot a list of lists with the same length and range on the x-axis
                 # for scen in scenarios:
                 #     for i in range(len(scen)):
@@ -80,17 +91,98 @@ class Scenario_Generator:
         scenarios = self.swap_levels(scenarios)
         return scenarios
 
-    def generate_scenarios_for_B(self, type, id_param, prev_steps, current_step, horizon=24):
+    def generate_scenarios_for_B(self, type, id_param, prev_steps,
+                                 current_step, horizon=24):
         scenarios_B = []
-        # if type == 'full_covariance':
-        #     scenarios_B = self.full_covariance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
         if type == 'norm_noise':
-            scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon, dist_type='norm')
+            scenarios_B = self.point_and_variance(prev_steps=prev_steps, 
+                                                  current_step=current_step, 
+                                                  id_param=id_param, 
+                                                  horizon=horizon, 
+                                                  dist_type='norm')
         elif type == 'gmm_noise':
-            scenarios_B = self.point_and_variance(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon)
+            scenarios_B = self.point_and_variance(prev_steps=prev_steps, 
+                                                  current_step=current_step, 
+                                                  id_param=id_param, 
+                                                  horizon=horizon)
         elif type == 'norm_noise_online':
-            scenarios_B = self.point_and_variance_online(prev_steps=prev_steps, current_step=current_step, id_param=id_param, horizon=horizon, dist_type='norm')
+            scenarios_B = self.point_and_variance_online(prev_steps=prev_steps, 
+                                                         current_step=current_step,
+                                                         id_param=id_param, 
+                                                         horizon=horizon, 
+                                                         dist_type='norm')
+        elif type == 'tree_scenario':
+            scenarios_B = self.tree_forecast(prev_steps=prev_steps, 
+                                             current_step=current_step,
+                                             id_param=id_param, 
+                                             robust_horizon=3, 
+                                             prediction_horizon=6, 
+                                             split_rate=2)
         return scenarios_B
+
+    def tree_forecast(self, prev_steps, current_step, id_param, robust_horizon, 
+                      prediction_horizon, split_rate):
+        self.forecast_live.update_prev_steps(prev_steps)
+        self.forecast_live.update_current_step(current_step)
+        self.forecast_live.update_min_max_scaler(id_param)
+        scenario_tree = {}
+
+        def build_scenario_tree(current_depth, max_depth, robust_depth, split_rate, 
+                                prev_steps, id_param, 
+                                current_hour, last_param=False):
+            if current_depth > max_depth:
+                return []
+            if current_depth > robust_horizon:
+                parent_prediction_list = []
+                for i in range(robust_depth):
+                    print(i)
+                    parent_prediction_list.append(
+                        self.forecast_live.get_point_forecast_step(
+                            current_depth + i, id_param, last_param))
+                    last_param = parent_prediction_list[-1]
+                return parent_prediction_list
+            lead_hour = (current_hour + current_depth + 1) % 24
+            std = self.variance_dict[current_hour][lead_hour]
+            resids = norm(loc=0, scale=std).rvs(2)
+            parent_prediction = self.forecast_live.get_point_forecast_step(
+                        current_depth, id_param, last_param)     
+            left_child_lag = parent_prediction + resids[0]
+            right_child_lag = parent_prediction + resids[1]
+            
+            left_child = build_scenario_tree(current_depth+1, 
+                                             max_depth,
+                                             robust_depth, 
+                                             split_rate,
+                                             prev_steps,
+                                             id_param,
+                                             current_hour,
+                                             left_child_lag)
+            right_child = build_scenario_tree(current_depth+1, 
+                                              max_depth, 
+                                              robust_depth,
+                                              split_rate,
+                                              prev_steps,
+                                              id_param,
+                                              current_hour,
+                                              right_child_lag)
+
+            return {
+                'prediction': parent_prediction,
+                'left_child': left_child,
+                'right_child': right_child
+            }
+
+
+
+        # Calculate the current hour based on previous steps
+        hour_now = prev_steps['hour'][-1] % 24
+        # Build the scenario tree
+        scenario_tree = build_scenario_tree(1, prediction_horizon, robust_horizon,
+                                            split_rate, prev_steps, id_param,
+                                            hour_now)
+        return scenario_tree
+            
+
 
     def point_and_variance(self, prev_steps, current_step, id_param, horizon=24, dist_type='norm'):
         scenario_B = [0] * horizon
@@ -150,12 +242,6 @@ class Scenario_Generator:
                 resids = np.array(np.array(resids).flatten())
                 resids = resids * (self.net_max_dict[id_param] - self.net_min_dict[id_param]) 
                 scenario_B[i] = (base[i] + resids).tolist()
-        # if self.debugger_is_active:
-        #     if current_step > 168:
-        #         temp_scen = np.array(np.array(scenario_B))
-        #         temp_base = np.array(base)
-        #         plot_noise = temp_scen - temp_base[:,np.newaxis]
-        #         plt.plot(plot_noise)
         scenario_B = self.swap_levels(scenario_B)
         return scenario_B
 

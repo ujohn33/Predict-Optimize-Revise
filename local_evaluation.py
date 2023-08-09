@@ -159,19 +159,19 @@ if __name__ == "__main__":
         scenario_gen = PerfectFile(24)
         manager = GurobiMatrixMPC(0)
     elif case_study == "logging":
-        type_forec = "together+naive"
+        type_forec = "tree_scenario"
         param = f"{type_forec}_{total_steps}_{phase_num}"
-        # scenario_gen = Scenario_Generator(
-        #     type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
-        # )
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = Scenario_Generator(
-            forec_file=file_name,
-            type="norm_noise_online",
-            n_scenarios=n_scen,
-            steps_ahead=24,
-            n_buildings=n_buildings,
+            type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
         )
+        # file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+        # scenario_gen = Scenario_Generator(
+        #     forec_file=file_name,
+        #     type="norm_noise_online",
+        #     n_scenarios=n_scen,
+        #     steps_ahead=24,
+        #     n_buildings=n_buildings,
+        # )
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
