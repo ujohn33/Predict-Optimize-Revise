@@ -77,11 +77,20 @@ class ScenarioFile:
         self.steps_ahead = steps_ahead
         self.scen_dict = {}
         file_df = pd.read_csv(scen_file)
-        for _, row in file_df.iterrows():
-            time_step = int(row["time_step"])
-            scen_num = int(row["scenario"])
-            build_num = int(row["building"])
-            scen_val = row.values[3:]
+
+        # Speed update for file reading
+        # for _, row in file_df.iterrows():
+        for row in file_df.values:
+            # time_step = int(row["time_step"])
+            time_step = int(row[0])
+            # scen_num = int(row["scenario"])
+            scen_num = int(row[1])
+            if scen_num >= n_scenarios:
+                continue
+            # build_num = int(row["building"])
+            build_num = int(row[2])
+            # scen_val = row.values[3:]
+            scen_val = row[3:]
             if scen_num not in self.scen_dict.keys():
                 self.scen_dict[scen_num] = dict()
             if build_num not in self.scen_dict[scen_num].keys():
@@ -92,7 +101,7 @@ class ScenarioFile:
         scenarios = list()
         steps_ahead = self.steps_ahead
         # get the value of the first key in self.scen_dict
-        #ind = list(self.scen_dict.keys())[0]
+        # ind = list(self.scen_dict.keys())[0]
         num_buildings = len(self.scen_dict[list(self.scen_dict.keys())[0]].keys())
         for num_scen in self.scen_dict.keys():
             forec_real = list()

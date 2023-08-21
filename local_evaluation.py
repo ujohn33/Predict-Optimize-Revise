@@ -9,6 +9,8 @@ from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 from ems.gurobi_mpc import GurobiMPC
 from ems.gurobi_matrix_mpc import GurobiMatrixMPC
+from ems.multi_stage_mpc import MultiStageMPC
+
 """
 Please do not make changes to this file. 
 This is only a reference script provided to allow you 
@@ -97,11 +99,14 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
                 obs_dict = env_reset(env)
 
                 step_start = time.perf_counter()
+
                 actions = agent.register_reset(obs_dict)
+
                 agent_time_elapsed += time.perf_counter() - step_start
             else:
                 step_start = time.perf_counter()
                 actions = agent.compute_action(observations)
+
                 agent_time_elapsed += time.perf_counter() - step_start
 
             num_steps += 1
@@ -144,9 +149,9 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
 
 
 if __name__ == "__main__":
-    case_study = "logging"
-    phase_num = 2
-    total_steps = 400
+    case_study = "multi_stage_mpc"
+    phase_num = 1
+    total_steps = 100
     n_scen = 10
     if phase_num == 3:
         n_buildings = 7
@@ -209,6 +214,19 @@ if __name__ == "__main__":
             n_buildings=n_buildings,
         )
         manager = GurobiMPC(0)
+    elif case_study == "multi_stage_mpc":
+        type_forec = "tree_scenario"
+        param = f"{type_forec}_{total_steps}_{phase_num}"
+        num_child = 3
+        robust_horizon = 2
+        scenario_gen = Scenario_Generator(
+            type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
+        )
+        scenario_gen.num_child = num_child
+        scenario_gen.robust_horizon = robust_horizon
+
+        manager = MultiStageMPC()
+        # manager = GurobiMPC(0)
 
     agent_used = GeneralAgent(scenario_gen, manager)
     evaluate(agent_used, total_steps=total_steps, phase_num=phase_num)
