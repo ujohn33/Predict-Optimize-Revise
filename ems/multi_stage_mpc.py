@@ -15,14 +15,12 @@ class ModelAttributes(object):
 
 
 class MultiStageMPC(Manager):
-    def __init__(self, weight_step="equal", steps_skip=1, file_name=None):
+    def __init__(self, weight_step="equal", file_name=None):
         super().__init__()
 
         self.file_name = file_name
         # Can be equal, cufe or favour_next
         self.weight_step = weight_step
-        self.steps_skip = steps_skip
-        self.steps_cache = [[] for _ in range(steps_skip)]
 
         self.model = gp.Model("citylearn+multi-stage-mpc")
         self.model.Params.LogToConsole = 0
@@ -140,6 +138,7 @@ class MultiStageMPC(Manager):
         soc_init,
         num_child,
         robust_horizon,
+        steps_skip,
     ):
         self.set_total_power_constr(forec_scenarios)
 
@@ -154,7 +153,7 @@ class MultiStageMPC(Manager):
 
         self.soc_constr(batt_eff, soc_init)
 
-        self.multi_stage_constr(num_child, robust_horizon)
+        self.multi_stage_constr(num_child, robust_horizon, steps_skip)
 
         self.obj_cost_constr()
 
@@ -320,7 +319,7 @@ class MultiStageMPC(Manager):
                         + model_att.batt_neg[s, b, t] / batt_eff
                     )
 
-    def multi_stage_constr(self, num_child, robust_horizon):
+    def multi_stage_constr(self, num_child, robust_horizon, steps_skip):
         model = self.model
         model_att = self.model_att
 
@@ -339,7 +338,7 @@ class MultiStageMPC(Manager):
                         == model_att.batt_pos[s + 1, b, t]
                         + model_att.batt_neg[s + 1, b, t]
                     )
-            if t < robust_horizon:
+            if t < robust_horizon and t % steps_skip == steps_skip - 1:
                 num_repeat = num_repeat // num_child
 
     def obj_cost_constr(self):
@@ -372,17 +371,18 @@ class MultiStageMPC(Manager):
 
             forec_scenarios = forec_scenarios_dict
 
-        robust_horizon, pred_horizon, num_child = get_scenario_parameters(
+        robust_horizon, pred_horizon, num_child, steps_skip = get_scenario_parameters(
             forec_scenarios
         )
+        self.steps_skip = steps_skip
 
         num_scenarios = num_child ** (robust_horizon)
 
         flat_forec_scen = make_forec_scenarios_flat(
             forec_scenarios, num_scenarios, num_batts
         )
-
-        plot_mult_scenarios(flat_forec_scen)
+        # if time_step > 48:
+        #    plot_mult_scenarios(flat_forec_scen)
 
         index_cache = time_step % self.steps_skip
 
@@ -431,40 +431,95 @@ class MultiStageMPC(Manager):
         carb_cost = [self.carb_df[(time_step + 1 + i) % 8760] for i in range(horizon)]
 
         # Base cost calculation
-        base_grid = list()
-        base_price = list()
-        base_carb = list()
+        base_grid, base_price, base_carb = calculate_base_costs(
+            num_scenarios,
+            last_step_batt_sum,
+            forec_step_sum,
+            num_batts,
+            carb_cost,
+            flat_forec_scen,
+            price_cost,
+            horizon,
+        )
 
-        for i in range(num_scenarios):
-            forec_last_st = [last_step_batt_sum] + forec_step_sum[i]
+        self.build_model_constraints(
+            batt_efficiency,
+            flat_forec_scen,
+            carb_cost,
+            base_carb,
+            price_cost,
+            base_price,
+            last_step_batt_sum,
+            base_grid,
+            soc_init,
+            num_child,
+            robust_horizon,
+            steps_skip,
+            pred_horizon,
+            num_batts,
+        )
 
-            base_carb_cost = 0
-            for j in range(num_batts):
-                base_carb_cost += sum(
-                    [
-                        val * carb_cost[k] if val >= 0 else 0
-                        for k, val in enumerate(flat_forec_scen[i][j])
-                    ]
-                )
-            if base_carb_cost == 0:
-                base_carb_cost = 1
-            base_carb.append(base_carb_cost)
+        self.optimise()
 
-            base_price_cost = sum(
-                [
-                    val * price_cost[j] if val >= 0 else 0
-                    for j, val in enumerate(forec_step_sum[i])
-                ]
+        actions = list()
+
+        power_batteries = [
+            [0 for _ in range(self.steps_skip)] for _ in range(num_batts)
+        ]
+
+        self.time_step += 1
+        if self.time_step > 25:
+            a = 3
+            b = a + 1
+
+        for b in range(num_batts):
+            for j, _ in enumerate(self.steps_cache):
+                batt_pos = self.model_att.batt_pos[0, b, j].X
+                batt_neg = self.model_att.batt_neg[0, b, j].X
+
+                power_batteries[b][j] = batt_pos + batt_neg
+
+            # Cache actions
+            for j, _ in enumerate(self.steps_cache):
+                cached_action = power_batteries[b][j] / batt_capacity[b]
+                self.steps_cache[j].append([cached_action])
+
+            action = power_batteries[b][0] / batt_capacity[b]
+            actions.append([action])
+        actions = np.array(actions)
+
+        if self.file_name is not None:
+            log_real_power(
+                time_step, self.file_name.replace("/", "/real_power_"), observation
             )
-            if base_price_cost == 0:
-                base_price_cost = 1
-            base_price.append(base_price_cost)
-
-            base_grid_cost = sum(
-                [abs(forec_last_st[j + 1] - forec_last_st[j]) for j in range(horizon)]
+            log_scenarios(
+                time_step, self.file_name.replace("/", "/scen_"), flat_forec_scen
             )
-            base_grid.append(base_grid_cost)
+            # log_fixed_powers(
+            #    time_step, self.file_name.replace("/", "/pow_"), power_batteries
+            # )
+        return actions
 
+    def optimise(self):
+        self.model.optimize()
+
+    def build_model_constraints(
+        self,
+        batt_efficiency,
+        flat_forec_scen,
+        carb_cost,
+        base_carb,
+        price_cost,
+        base_price,
+        last_step_batt_sum,
+        base_grid,
+        soc_init,
+        num_child,
+        robust_horizon,
+        steps_skip,
+        pred_horizon,
+        num_batts,
+    ):
         if not self.model_initialized:
             self.build_sets(robust_horizon, pred_horizon, num_batts, num_child)
 
@@ -482,6 +537,7 @@ class MultiStageMPC(Manager):
                 soc_init,
                 num_child,
                 robust_horizon,
+                steps_skip,
             )
             self.build_obj()
             self.model_initialized = True
@@ -501,83 +557,72 @@ class MultiStageMPC(Manager):
                 soc_init,
                 num_child,
                 robust_horizon,
+                steps_skip,
             )
-            # self.model.update()
-            # self.opt_add_constraints()
-            """
-            param_block = self.build_persistant_params(
-                soc_init,
-                last_step_batt_sum,
-                price_cost,
-                carb_cost,
-                base_carb,
-                base_price,
-                base_grid,
-                forec_scenarios,
+
+
+def calculate_base_costs(
+    num_scenarios,
+    last_step_batt_sum,
+    forec_step_sum,
+    num_batts,
+    carb_cost,
+    flat_forec_scen,
+    price_cost,
+    horizon,
+):
+    base_grid = list()
+    base_price = list()
+    base_carb = list()
+
+    for i in range(num_scenarios):
+        forec_last_st = [last_step_batt_sum] + forec_step_sum[i]
+
+        base_carb_cost = 0
+        for j in range(num_batts):
+            base_carb_cost += sum(
+                [
+                    val * carb_cost[k] if val >= 0 else 0
+                    for k, val in enumerate(flat_forec_scen[i][j])
+                ]
             )
-            """
-            # self.opt.remove_block(self.model.params)
-            # del self.model.params
+        if base_carb_cost == 0:
+            base_carb_cost = 1
+        base_carb.append(base_carb_cost)
 
-            # self.model.add_component("params", param_block)
-            # self.opt.add_block(self.model.params)
+        base_price_cost = sum(
+            [
+                val * price_cost[j] if val >= 0 else 0
+                for j, val in enumerate(forec_step_sum[i])
+            ]
+        )
+        if base_price_cost == 0:
+            base_price_cost = 1
+        base_price.append(base_price_cost)
 
-        # res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds)
-        # soc_power.append(res)
-
-        self.model.optimize()
-
-        # self.opt.solve(model_inst)
-        # log_infeasible_constraints(self.model)
-        # logging.basicConfig(
-        #    filename="example.log", encoding="utf-8", level=logging.INFO
-        # )
-        actions = list()
-
-        power_batteries = [0 for _ in range(num_batts)]
-
-        self.time_step += 1
-        if self.time_step > 25:
-            a = 3
-            b = a + 1
-
-        for b in range(num_batts):
-            batt_pos = self.model_att.batt_pos[0, b, 0].X
-            batt_neg = self.model_att.batt_neg[0, b, 0].X
-
-            power_batteries[b] = batt_pos + batt_neg
-
-            # Cache actions
-
-            action = power_batteries[b] / batt_capacity[b]
-            actions.append([action])
-        actions = np.array(actions)
-
-        if self.file_name is not None:
-            log_real_power(
-                time_step, self.file_name.replace("/", "/real_power_"), observation
-            )
-            log_scenarios(
-                time_step, self.file_name.replace("/", "/scen_"), flat_forec_scen
-            )
-            log_fixed_powers(
-                time_step, self.file_name.replace("/", "/pow_"), power_batteries
-            )
-        return actions
+        base_grid_cost = sum(
+            [abs(forec_last_st[j + 1] - forec_last_st[j]) for j in range(horizon)]
+        )
+        base_grid.append(base_grid_cost)
+    return base_grid, base_price, base_carb
 
 
 def get_scenario_parameters(forec_scenarios):
-    current_level = forec_scenarios[list(forec_scenarios.keys())[0]]
+    forec_power = list(forec_scenarios.keys())[0]
+    steps_skip = len(forec_power[0])
+
+    current_level = forec_scenarios[forec_power]
     num_child = len(forec_scenarios.keys())
-    depth = 1
+    robust_horizon = 1
+
     while isinstance(current_level, dict):
-        depth += 1
-        current_level = current_level[current_level.keys()[0]]
+        robust_horizon += 1
+        forec_power = list(current_level.keys())[0]
+        current_level = current_level[forec_power]
 
-    robust_horizon = depth
-    pred_horizon = robust_horizon + len(current_level[0])
+    pred_horizon = robust_horizon * steps_skip + len(current_level[0])
 
-    return robust_horizon, pred_horizon, num_child
+    return robust_horizon, pred_horizon, num_child, steps_skip
 
 
 def make_forec_scenarios_flat(forec_scenarios, num_scenarios, num_batts):
@@ -598,10 +643,11 @@ def recur_unfold_scenarios(
         num_repeat = scenarios_to_fill // num_child
         for key_ind, key in enumerate(current_level.keys()):
             for scen_repeat in range(num_repeat):
-                for batt_index, batt_power in enumerate(key):
-                    scen_index = index_start + scen_repeat + key_ind * num_repeat
-
-                    flat_forec_scen[scen_index][batt_index].append(batt_power)
+                scen_index = index_start + scen_repeat + key_ind * num_repeat
+                for batt_index, forec_power in enumerate(key):
+                    flat_forec_scen[scen_index][batt_index] += forec_power
+                    # for batt_power in forec_power:
+                    #    flat_forec_scen[scen_index][batt_index].append(batt_power)
             next_level = current_level[key]
             new_scenarios_to_fill = num_repeat
             new_index_start = index_start + key_ind * num_repeat

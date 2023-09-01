@@ -110,6 +110,7 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
                 agent_time_elapsed += time.perf_counter() - step_start
 
             num_steps += 1
+            print(num_steps)
             if num_steps % 100 == 0:
                 # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
                 # log_usefull(env, filename)
@@ -150,9 +151,10 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
 
 if __name__ == "__main__":
     case_study = "multi_stage_mpc"
-    phase_num = 1
-    total_steps = 100
-    n_scen = 10
+    case_study = "comp_multi_stage_mpc"
+    phase_num = 2
+    total_steps = 500
+    n_scen = 100
     if phase_num == 3:
         n_buildings = 7
     else:
@@ -165,6 +167,7 @@ if __name__ == "__main__":
         manager = GurobiMatrixMPC(0)
     elif case_study == "logging":
         type_forec = "tree_scenario"
+
         param = f"{type_forec}_{total_steps}_{phase_num}"
         scenario_gen = Scenario_Generator(
             type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
@@ -205,6 +208,7 @@ if __name__ == "__main__":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = ScenarioFileAndNaive(file_name, n_scenarios=1)
     elif case_study == "together_live":
+        n_scen = 9
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = Scenario_Generator(
             forec_file=file_name,
@@ -216,17 +220,37 @@ if __name__ == "__main__":
         manager = GurobiMPC(0)
     elif case_study == "multi_stage_mpc":
         type_forec = "tree_scenario"
-        param = f"{type_forec}_{total_steps}_{phase_num}"
-        num_child = 3
+
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+
+        num_child = 2
         robust_horizon = 2
         scenario_gen = Scenario_Generator(
-            type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
+            type=type_forec,
+            n_scenarios=n_scen,
+            steps_ahead=24,
+            n_buildings=n_buildings,
+            forec_file=file_name,
         )
         scenario_gen.num_child = num_child
         scenario_gen.robust_horizon = robust_horizon
-
-        manager = MultiStageMPC()
+        scenario_gen.steps_skip = 1
+        log_exten = f"debug_logs/multi_stage_mpc_{scenario_gen.steps_skip}.csv"
+        manager = MultiStageMPC(file_name=log_exten)
         # manager = GurobiMPC(0)
+    elif case_study == "comp_multi_stage_mpc":
+        type_forec = "norm_noise"
+        n_scen = 9
+        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+        scenario_gen = Scenario_Generator(
+            type=type_forec,
+            n_scenarios=n_scen,
+            steps_ahead=24,
+            n_buildings=n_buildings,
+            forec_file=file_name,
+        )
+
+        manager = GurobiMPC(0, steps_skip=3)
 
     agent_used = GeneralAgent(scenario_gen, manager)
     evaluate(agent_used, total_steps=total_steps, phase_num=phase_num)

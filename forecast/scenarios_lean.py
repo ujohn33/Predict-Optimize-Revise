@@ -162,53 +162,77 @@ class Scenario_Generator:
         max_depth,
         robust_depth,
         split_rate,
-        prev_steps,
+        base,
         id_param,
         current_hour,
         current_node,
         last_param=False,
     ):
         lead_hour = (current_hour + current_depth + 1) % 24
-        std = self.variance_dict[current_hour][lead_hour]
-        resids = norm(loc=0, scale=std).rvs(split_rate)
-        resids = resids * (
-            self.forecast_live.net_max_dict[id_param]
-            - self.forecast_live.net_min_dict[id_param]
-        )
-        parent_prediction = self.forecast_live.get_point_forecast_step(
-            current_depth, id_param, last_param
-        )
+
+        resids = list()
+        for i in range(self.steps_skip):
+            std = self.variance_dict[current_hour][(lead_hour + i) % 24]
+            resids_step = norm(loc=0, scale=std).rvs(split_rate)
+            resids_step = resids_step * (
+                self.forecast_live.net_max_dict[id_param]
+                - self.forecast_live.net_min_dict[id_param]
+            )
+            resids.append(resids_step)
+
+        parent_prediction = base[
+            current_depth - 1 : current_depth + self.steps_skip - 1
+        ]
+        # self.forecast_live.get_point_forecast_step(current_depth, id_param, last_param)
         for i in range(split_rate):
-            child_lag = parent_prediction + resids[i]
-            if current_depth < robust_depth:
+            child_lag = [
+                parent_prediction[j] + resids[j][i] for j in range(self.steps_skip)
+            ]
+            child_lag = tuple(child_lag)
+
+            if current_depth < robust_depth - self.steps_skip:
                 current_node[child_lag] = {}
                 self.build_scenario_tree(
-                    current_depth + 1,
+                    current_depth + self.steps_skip,
                     max_depth,
                     robust_depth,
                     split_rate,
-                    prev_steps,
+                    base,
                     id_param,
                     current_hour,
                     current_node[child_lag],
                     child_lag,
                 )
             else:
-                remaning_depth = max_depth - current_depth
+                remaning_depth = max_depth - robust_depth
                 current_node[child_lag] = self.tail_forecast(
-                    remaning_depth, current_depth, id_param, child_lag
+                    remaning_depth,
+                    current_hour,
+                    current_depth,
+                    id_param,
+                    base,
                 )
 
-    def tail_forecast(self, remaning_depth, current_depth, id_param, last_param):
-        # TODO for loop for children predictions
+    def tail_forecast(
+        self, remaning_depth, current_hour, current_depth, id_param, base
+    ):
         parent_prediction_list = []
         for i in range(remaning_depth):
-            parent_prediction_list.append(
-                self.forecast_live.get_point_forecast_step(
-                    current_depth + i + 1, id_param, last_param
-                )
+            lead_hour = (current_hour + current_depth + i + 1) % 24
+            std = self.variance_dict[current_hour][lead_hour]
+            resids = np.random.normal(0, std, 1)
+            resids = resids * (
+                self.forecast_live.net_max_dict[id_param]
+                - self.forecast_live.net_min_dict[id_param]
             )
-            last_param = parent_prediction_list[-1]
+            power_forec = base[current_depth + i]
+            parent_prediction_list.append(power_forec + resids[0])
+            # parent_prediction_list.append(
+            #    self.forecast_live.get_point_forecast_step(
+            #        current_depth + i + 1, id_param, last_param
+            #    )
+            #    + resids[0]
+            # )
 
         return parent_prediction_list
 
@@ -226,15 +250,21 @@ class Scenario_Generator:
         self.forecast_live.update_min_max_scaler(id_param)
         scenario_tree = {}
 
+        scenario_B = [0] * pred_horizon
+        current_hour = prev_steps["hour"][-1] % 24
+        base = self.forecast_gen.scen_dict[0][id_param][current_step][
+            :pred_horizon
+        ].tolist()
+
         # Calculate the current hour based on previous steps
         hour_now = prev_steps["hour"][-1] % 24
         # Build the scenario tree
         self.build_scenario_tree(
-            1,
+            1,  # TODO check if it's 0 or 1
             pred_horizon,
-            robust_horizon,
+            robust_horizon * self.steps_skip,
             num_child,
-            prev_steps,
+            base,
             id_param,
             hour_now,
             scenario_tree,
