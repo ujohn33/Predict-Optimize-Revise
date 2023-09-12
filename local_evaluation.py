@@ -3,7 +3,7 @@ import time
 from agents.general_agent import GeneralAgent
 from ems.logger_manager import LoggerManager
 from ems.mpc import MPC
-from forecast.scenarios_lean import Scenario_Generator
+from forecast.scenarios_ngboost import Scenario_Generator
 from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
@@ -239,17 +239,24 @@ if __name__ == "__main__":
         manager = MultiStageMPC(file_name=log_exten)
         # manager = GurobiMPC(0)
     elif case_study == "comp_multi_stage_mpc":
-        type_forec = "norm_noise"
-        n_scen = 9
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        scenario_gen = Scenario_Generator(
-            type=type_forec,
-            n_scenarios=n_scen,
-            steps_ahead=24,
-            n_buildings=n_buildings,
-            forec_file=file_name,
-        )
+        # type_forec = "norm_noise"
+        # n_scen = 9
+        # file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+        # scenario_gen = Scenario_Generator(
+        #     type=type_forec,
+        #     n_scenarios=n_scen,
+        #     steps_ahead=24,
+        #     n_buildings=n_buildings,
+        #     forec_file=file_name,
+        # )
 
+        # manager = GurobiMPC(0, steps_skip=3)
+        n_scen = 10
+        scenario_gen = Scenario_Generator(
+            n_scenarios=n_scen, 
+            n_buildings=n_buildings, 
+            steps_ahead=24
+        )
         manager = GurobiMPC(0, steps_skip=3)
 
     agent_used = GeneralAgent(scenario_gen, manager)
