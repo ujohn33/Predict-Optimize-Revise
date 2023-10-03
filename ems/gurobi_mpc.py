@@ -27,6 +27,7 @@ class GurobiMPC(Manager):
 
         self.model = gp.Model("citylearn+mpc")
         self.model.Params.LogToConsole = 0
+        self.model.Params.Threads = 2
         self.model_att = ModelAttributes()
 
         self.model_initialized = False

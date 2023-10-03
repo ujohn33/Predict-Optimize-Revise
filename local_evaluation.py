@@ -76,7 +76,7 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
             if done or (num_steps + 1) == total_steps:
                 # Log run
                 filename = f"debug_logs/run_logs.csv"
-                log_usefull(env, filename)
+                # log_usefull(env, filename)
 
                 episodes_completed += 1
                 metrics_t = env.evaluate()
@@ -139,14 +139,15 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
         apc = np.mean([e["price_cost"] for e in episode_metrics])
         aec = np.mean([e["emmision_cost"] for e in episode_metrics])
         agc = np.mean([e["grid_cost"] for e in episode_metrics])
-        return tc, apc, aec, agc
+        
     print(f"Total time taken by agent: {agent_time_elapsed}s")
 
+    return tc, apc, aec, agc, agent_time_elapsed
 
 if __name__ == "__main__":
-    case_study = "logging"
-    phase_num = 2
-    total_steps = 400
+    case_study = "together_live"
+    phase_num = 1
+    total_steps = 100
     n_scen = 10
     if phase_num == 3:
         n_buildings = 7
