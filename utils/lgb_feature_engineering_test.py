@@ -7,7 +7,7 @@ from utils.util_functions import reduce_mem_usage
 
 warnings.simplefilter('ignore')
 
-def init_test_data():
+def init_test_data(mode):
     print("Init test data")
     path_to_bu1 = "data/citylearn_challenge_2022_phase_1/Building_1.csv"
     path_to_bu = path_to_bu1
@@ -52,7 +52,6 @@ def init_test_data():
                      ]
     df = df[selected_cols]
 
-    #df['Day'] = df.index // 24
     df['Hour'] = df.Hour % 24
     df["hour_x"] = np.cos(2*np.pi* df["Hour"] / 24)
     df["hour_y"] = np.sin(2*np.pi* df["Hour"] / 24)
@@ -72,7 +71,10 @@ def init_test_data():
         df['Diffuse_Solar_Radiation_{}'.format(i)] = df['Diffuse_Solar_Radiation'].shift(-i - 1)
         df['Direct_Solar_Radiation_{}'.format(i)] = df['Direct_Solar_Radiation'].shift(-i - 1)
     for i in range(int(N * 1.25)):
-        df['Net_Past_{}'.format(i)] = np.nan
+        if mode == 'load':
+            df['Load_Past_{}'.format(i)] = df['Equipment_Electric_Power'].shift(i+1)
+        elif mode == 'solar':
+            df['Solar_Past_{}'.format(i)] = df['Solar_Generation'].shift(i+1)
 
     df.drop(columns=['Equipment_Electric_Power', 'Solar_Generation'], inplace=True)
     print('init df shape:', df.shape)

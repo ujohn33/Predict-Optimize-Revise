@@ -179,4 +179,6 @@ data/cons_variance_hour_month.csv
 data/extra_cons_train.csv
 data/extra_solar_train.csv
 data/extra_train_phase2.csv
+models/ngboost/
+results/
 metrics.csv

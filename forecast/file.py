@@ -1,8 +1,14 @@
 from copy import deepcopy
 import pandas as pd
+import sys
 import matplotlib.pyplot as plt
 from scipy import stats
 import numpy as np
+
+
+def debugger_is_active() -> bool:
+    """Return if the debugger is currently active"""
+    return hasattr(sys, "gettrace") and sys.gettrace() is not None
 
 
 class PerfectFile:
@@ -113,6 +119,70 @@ class ScenarioFile:
 
         return scenarios
 
+
+class ScenarioFile_sliding:
+    def __init__(self, scen_file, n_scenarios=10, steps_ahead=24, steps_skip=1):
+        self.n_scenarios = n_scenarios
+        self.steps_ahead = steps_ahead
+        self.steps_skip = steps_skip
+        self.scen_dict = {}
+        self.forec_cache = list()
+        file_df = pd.read_csv(scen_file)
+        self.debugger_is_active = debugger_is_active()
+
+        # Speed update for file reading
+        # for _, row in file_df.iterrows():
+        for row in file_df.values:
+            # time_step = int(row["time_step"])
+            time_step = int(row[0])
+            # scen_num = int(row["scenario"])
+            scen_num = int(row[1])
+            if scen_num >= n_scenarios:
+                continue
+            # build_num = int(row["building"])
+            build_num = int(row[2])
+            # scen_val = row.values[3:]
+            scen_val = row[3:]
+            if scen_num not in self.scen_dict.keys():
+                self.scen_dict[scen_num] = dict()
+            if build_num not in self.scen_dict[scen_num].keys():
+                self.scen_dict[scen_num][build_num] = dict()
+            self.scen_dict[scen_num][build_num][time_step] = scen_val
+
+    def generate_scenarios(self, prev_steps, time_step):
+        scenarios = list()
+        steps_ahead = self.steps_ahead
+        index_cache = time_step % self.steps_skip
+        # get the value of the first key in self.scen_dict
+        # ind = list(self.scen_dict.keys())[0]
+        num_buildings = len(self.scen_dict[list(self.scen_dict.keys())[0]].keys())
+        for num_scen in self.scen_dict.keys():
+            forec_real = list()
+            for num_buil in range(num_buildings):
+                scenario = self.scen_dict[num_scen][num_buil][time_step][:steps_ahead]
+                forec_real.append(list(scenario))
+            if index_cache == 0:
+                scenarios.append(forec_real)
+                self.forec_cache = forec_real
+                if self.debugger_is_active:
+                    for data in forec_real:
+                        plt.plot(data)
+                    plt.show()
+            else:
+                # shift forec_real by index_cache
+                shifted_forec = list()
+                for i in range(num_buildings):
+                    shifted_forec.append(
+                        self.forec_cache[i][index_cache:] + self.forec_cache[i][:index_cache]
+                    )
+                    # change the last elements to the values from forec real
+                    shifted_forec[i][-index_cache:] = forec_real[i][-index_cache:]
+                scenarios.append(shifted_forec)
+                if self.debugger_is_active:
+                    for data in shifted_forec:
+                        plt.plot(data)
+                    plt.show()
+        return scenarios
 
 class ScenarioFileAndNaive(ScenarioFile):
     def __init__(self, scen_file, n_scenarios=10, steps_ahead=24):

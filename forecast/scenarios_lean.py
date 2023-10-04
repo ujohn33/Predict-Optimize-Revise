@@ -4,7 +4,7 @@ import sys
 import matplotlib.pyplot as plt
 
 # import Forecast class from forecast-function.py
-from forecast.forecast_functions import Forecast
+from forecast.forecast_lean import Forecast
 from forecast.file import ScenarioFile
 from scipy.stats import norm
 
@@ -21,12 +21,14 @@ class Scenario_Generator:
         n_scenarios=10,
         n_buildings=5,
         steps_ahead=24,
+        revision_forec_freq=1,
         forec_file=None,
     ):
         self.type = type
         self.n_scenarios = n_scenarios
         self.n_buildings = n_buildings
         self.steps_ahead = steps_ahead
+        self.steps_skip_forecast = revision_forec_freq
         self.gen_min_dict = {}
         self.gen_max_dict = {}
         self.net_min_dict = {}
@@ -51,7 +53,7 @@ class Scenario_Generator:
             # read multivariate normal distribution from pickle file
             self.mv_norm = joblib.load("models/residuals_norm/mvn_hour.pkl")
         elif type == "norm_noise":
-            model_src = "models/residuals_norm/std_residuals_norm.pkl"
+            model_src = "models/error_sim/std_dict_hour_leadtime.pkl"
             # change model for steps 2 to 24 to recurrent next step model
             self.variance_dict = joblib.load(model_src)
         elif type == "norm_noise_online":
@@ -74,16 +76,6 @@ class Scenario_Generator:
 
         return scenarios
 
-    def recur_swap_levels(self, lst, scenarios):
-        for i, _ in enumerate(lst[0].keys()):
-            node_value = tuple(list(subdict.keys())[i] for subdict in lst)
-            new_lst = [subdict[node_value[j]] for j, subdict in enumerate(lst)]
-            if isinstance(new_lst[0], dict):
-                scenarios[node_value] = dict()
-                self.recur_swap_levels(new_lst, scenarios[node_value])
-            else:
-                scenarios[node_value] = new_lst
-
     def update_min_max_scaler(self, prev_steps, id):
         last_val = prev_steps[f"non_shiftable_load_{id}"][-1] - (
             prev_steps[f"solar_generation_{id}"][-1]
@@ -97,17 +89,17 @@ class Scenario_Generator:
         for b in range(self.n_buildings):
             self.update_min_max_scaler(prev_steps, b)
             scens_B_temp = self.generate_scenarios_for_B(
-                self.type, b, prev_steps, current_step, horizon
+                self.type, b, prev_steps, current_step, self.steps_skip_forecast, horizon
             )
             scenarios.append(scens_B_temp)
             # if current_step > 168:
             # plot a list of lists with the same length and range on the x-axis
-            # for scen in scenarios:
-            #     for i in range(len(scen)):
-            #         if self.debugger_is_active:
-            #             plt.title("")
-            #             plt.plot(scen[i])
-            #             plt.show()
+            if self.debugger_is_active:
+                for scen in scenarios[-1]:
+                    plt.plot(scen)
+                plt.title(f"Forecast for building {b} at step {current_step}")
+                plt.show()
+                plt.clf()
             #             # clean up
             #             plt.close()
         # if self.debugger_is_active:
@@ -118,7 +110,7 @@ class Scenario_Generator:
         return scenarios
 
     def generate_scenarios_for_B(
-        self, type, id_param, prev_steps, current_step, horizon=24
+        self, type, id_param, prev_steps, current_step, skip_steps_forec, horizon=24
     ):
         scenarios_B = []
         if type == "norm_noise":
@@ -126,6 +118,7 @@ class Scenario_Generator:
                 prev_steps=prev_steps,
                 current_step=current_step,
                 id_param=id_param,
+                revision_freq=skip_steps_forec,
                 horizon=horizon,
                 dist_type="norm",
             )
@@ -156,143 +149,54 @@ class Scenario_Generator:
 
         return scenarios_B
 
-    def build_scenario_tree(
-        self,
-        current_depth,
-        max_depth,
-        robust_depth,
-        split_rate,
-        base,
-        id_param,
-        current_hour,
-        current_node,
-        last_param=False,
-    ):
-        lead_hour = (current_hour + current_depth + 1) % 24
-
-        resids = list()
-        for i in range(self.steps_skip):
-            std = self.variance_dict[current_hour][(lead_hour + i) % 24]
-            resids_step = norm(loc=0, scale=std).rvs(split_rate)
-            resids_step = resids_step * (
-                self.forecast_live.net_max_dict[id_param]
-                - self.forecast_live.net_min_dict[id_param]
-            )
-            resids.append(resids_step)
-
-        parent_prediction = base[
-            current_depth - 1 : current_depth + self.steps_skip - 1
-        ]
-        # self.forecast_live.get_point_forecast_step(current_depth, id_param, last_param)
-        for i in range(split_rate):
-            child_lag = [
-                parent_prediction[j] + resids[j][i] for j in range(self.steps_skip)
-            ]
-            child_lag = tuple(child_lag)
-
-            if current_depth < robust_depth - self.steps_skip:
-                current_node[child_lag] = {}
-                self.build_scenario_tree(
-                    current_depth + self.steps_skip,
-                    max_depth,
-                    robust_depth,
-                    split_rate,
-                    base,
-                    id_param,
-                    current_hour,
-                    current_node[child_lag],
-                    child_lag,
-                )
-            else:
-                remaning_depth = max_depth - robust_depth
-                current_node[child_lag] = self.tail_forecast(
-                    remaning_depth,
-                    current_hour,
-                    current_depth,
-                    id_param,
-                    base,
-                )
-
-    def tail_forecast(
-        self, remaning_depth, current_hour, current_depth, id_param, base
-    ):
-        parent_prediction_list = []
-        for i in range(remaning_depth):
-            lead_hour = (current_hour + current_depth + i + 1) % 24
-            std = self.variance_dict[current_hour][lead_hour]
-            resids = np.random.normal(0, std, 1)
-            resids = resids * (
-                self.forecast_live.net_max_dict[id_param]
-                - self.forecast_live.net_min_dict[id_param]
-            )
-            power_forec = base[current_depth + i]
-            parent_prediction_list.append(power_forec + resids[0])
-            # parent_prediction_list.append(
-            #    self.forecast_live.get_point_forecast_step(
-            #        current_depth + i + 1, id_param, last_param
-            #    )
-            #    + resids[0]
-            # )
-
-        return parent_prediction_list
-
-    def tree_forecast(
-        self,
-        prev_steps,
-        current_step,
-        id_param,
-        robust_horizon,
-        pred_horizon,
-        num_child,
-    ):
-        self.forecast_live.update_prev_steps(prev_steps)
-        self.forecast_live.update_current_step(current_step)
-        self.forecast_live.update_min_max_scaler(id_param)
-        scenario_tree = {}
-
-        scenario_B = [0] * pred_horizon
-        current_hour = prev_steps["hour"][-1] % 24
-        base = self.forecast_gen.scen_dict[0][id_param][current_step][
-            :pred_horizon
-        ].tolist()
-
-        # Calculate the current hour based on previous steps
-        hour_now = prev_steps["hour"][-1] % 24
-        # Build the scenario tree
-        self.build_scenario_tree(
-            1,  # TODO check if it's 0 or 1
-            pred_horizon,
-            robust_horizon * self.steps_skip,
-            num_child,
-            base,
-            id_param,
-            hour_now,
-            scenario_tree,
-        )
-        return scenario_tree
+    def samples_tail(self, tail_percentage, mean, std_dev, sample_size):
+        # Calculate the z-score corresponding to the tail percentage
+        z_score = norm.ppf(1 - (tail_percentage / 100), loc=mean, scale=std_dev)
+        # Initialize an empty array for tail samples
+        tail_samples = np.array([])
+        # Keep generating samples until the desired sample_size is reached
+        while len(tail_samples) < sample_size:
+            # Generate random samples from the left and right tails separately
+            tail_samples_left = np.random.normal(loc=mean, scale=std_dev, size=sample_size // 2)
+            tail_samples_left = tail_samples_left[tail_samples_left < -z_score]
+            tail_samples_right = np.random.normal(loc=mean, scale=std_dev, size=sample_size // 2)
+            tail_samples_right = tail_samples_right[tail_samples_right > z_score]
+            # Combine the samples from both tails
+            tail_samples_combined = np.concatenate((tail_samples_left, tail_samples_right))
+            # Append the samples to the tail_samples array
+            tail_samples = np.append(tail_samples, tail_samples_combined)
+        # Trim the tail_samples array to the desired sample_size
+        tail_samples = tail_samples[:sample_size]
+        return tail_samples
 
     def point_and_variance(
-        self, prev_steps, current_step, id_param, horizon=24, dist_type="norm"
+        self, prev_steps, current_step, id_param, revision_freq, horizon=24, dist_type="norm"
     ):
         scenario_B = [0] * horizon
         current_hour = prev_steps["hour"][-1] % 24
-        base = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
-        for i in range(horizon):
-            lead_hour = (current_hour + i + 1) % 24
+
+        index_cache = current_step % revision_freq
+        forec_real = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
+        if index_cache == 0:
+            self.forec_cache = forec_real
+            base = forec_real
+        else:
+            base = self.forec_cache[index_cache:] + self.forec_cache[:index_cache]
+            base[-index_cache:] = forec_real[-index_cache:]
+
+        for leadtime in range(horizon):
             if dist_type == "norm":
                 # get the variance of the error for the current hour
-                std = self.variance_dict[current_hour][lead_hour]
+                std = self.variance_dict[current_hour][leadtime]
                 # set a normal distribution with mean = 0 and variance = variance
                 dist = norm(loc=0, scale=std)
                 # sample from a normal distribution with variance = variance
                 resids = dist.rvs(self.n_scenarios)
+                #resids = self.samples_tail(20, 0, std, self.n_scenarios)
             else:
                 raise ValueError("dist_type must be either norm or gmm")
             resids = np.array(np.array(resids).flatten())
-            resids = resids * (
-                self.net_max_dict[id_param] - self.net_min_dict[id_param]
-            )
-            scenario_B[i] = (base[i] + resids).tolist()
+            scenario_B[leadtime] = (base[leadtime] + resids).tolist()
         scenario_B = self.swap_levels(scenario_B)
         return scenario_B
 
@@ -301,7 +205,7 @@ class Scenario_Generator:
     ):
         scenario_B = [0] * horizon
         current_hour = prev_steps["hour"][-1] % 24
-        base = self.forecast_gen.scen_dict[0][id_param][current_step][:horizon].tolist()
+
         if current_step > 168:
             means_last_week, stds_last_week = self.update_variance_last_week(
                 prev_steps,

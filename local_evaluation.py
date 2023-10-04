@@ -3,8 +3,9 @@ import time
 from agents.general_agent import GeneralAgent
 from ems.logger_manager import LoggerManager
 from ems.mpc import MPC
-from forecast.scenarios_ngboost import Scenario_Generator
-from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive
+from forecast.scenarios_lean import Scenario_Generator
+from forecast.scenarios_ngboost import Scenario_Generator_NGBoost
+from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFileAndNaive, ScenarioFile_sliding
 from utils.logger import log_usefull
 from ems.pyo_mpc import PyoMPC
 from ems.gurobi_mpc import GurobiMPC
@@ -110,7 +111,7 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
                 agent_time_elapsed += time.perf_counter() - step_start
 
             num_steps += 1
-            print(num_steps)
+            #print(num_steps)
             if num_steps % 100 == 0:
                 # filename = f"debug_logs/run_logs_{episodes_completed}.csv"
                 # log_usefull(env, filename)
@@ -150,11 +151,14 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
 
 
 if __name__ == "__main__":
-    case_study = "multi_stage_mpc"
-    case_study = "comp_multi_stage_mpc"
-    phase_num = 2
-    total_steps = 500
-    n_scen = 100
+    case_study = "together_live"
+    #case_study = "multi_stage_mpc"
+    #case_study = "comp_multi_stage_mpc"
+    phase_num = 3
+    total_steps = 9000
+    n_scen = 20
+    steps_skip = 1
+    steps_skip_forecast = 3
     if phase_num == 3:
         n_buildings = 7
     else:
@@ -167,25 +171,15 @@ if __name__ == "__main__":
         manager = GurobiMatrixMPC(0)
     elif case_study == "logging":
         type_forec = "tree_scenario"
-
         param = f"{type_forec}_{total_steps}_{phase_num}"
         scenario_gen = Scenario_Generator(
             type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
         )
-        # file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        # scenario_gen = Scenario_Generator(
-        #     forec_file=file_name,
-        #     type="norm_noise_online",
-        #     n_scenarios=n_scen,
-        #     steps_ahead=24,
-        #     n_buildings=n_buildings,
-        # )
         logger = LoggerManager(param)
         manager = logger
         scenario_gen.logger = logger
     elif case_study == "read_scenarios_files":
         file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
-        # file_name = f"debug_logs/scenarios_point_and_variance_9000_3.csv"
         n_scen = 10
         scenario_gen = ScenarioFile(file_name, n_scenarios=n_scen)
         manager = PyoMPC(0)
@@ -202,17 +196,27 @@ if __name__ == "__main__":
         manager = PyoMPC(0)
     elif case_study == "together":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        scenario_gen = ScenarioFile(file_name, n_scenarios=1)
-        manager = MPC(0)
+        scenario_gen = ScenarioFile_sliding(file_name, n_scenarios=n_scen, steps_ahead=24, steps_skip=steps_skip_forecast)
+        log_exten = f"debug_logs/gurobi_step_leap_{steps_skip}_forecast_step_{steps_skip_forecast}.csv"
+        manager = GurobiMPC(0, steps_skip=steps_skip, file_name=log_exten)
+        #manager = MPC(0)
     elif case_study == "together+naive":
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = ScenarioFileAndNaive(file_name, n_scenarios=1)
     elif case_study == "together_live":
-        n_scen = 9
         file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
         scenario_gen = Scenario_Generator(
             forec_file=file_name,
-            type="norm_noise_online",
+            type="norm_noise",
+            n_scenarios=n_scen,
+            steps_ahead=24,
+            revision_forec_freq=steps_skip_forecast,
+            n_buildings=n_buildings,
+        )
+        manager = GurobiMPC(0, steps_skip=steps_skip)
+    elif case_study == "ngboost":
+        n_scen = 9
+        scenario_gen = Scenario_Generator_NGBoost(
             n_scenarios=n_scen,
             steps_ahead=24,
             n_buildings=n_buildings,

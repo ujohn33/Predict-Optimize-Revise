@@ -34,8 +34,12 @@ class GeneralAgent:
     def set_pv_capacity_and_num_buildings(self, building_info):
         self.num_buildings = len(building_info)
         self.pv_capacity = [i["solar_power"] for i in building_info]
-        if hasattr(self.scenario_gen,"qts_model"):
-            self.scenario_gen.qts_model.pv_capacity = self.pv_capacity
+        #if hasattr(self.scenario_gen,"qts_model"):
+        if hasattr(self.scenario_gen,"model_direct24"):
+            for agent_id in range(self.num_buildings):
+                self.scenario_gen.model_direct24.pv_capacity_dict[agent_id] = building_info[agent_id]['solar_power']
+            #self.scenario_gen.model_direct24.pv_capacity_dict[agent_id] = building_info[agent_id]['solar_power']
+            #print('building info {} - pv number {}.'.format(agent_id, pv_capacity_dict[agent_id]))
 
     def populate_prev_steps(self, observations):
         done_keys = list()

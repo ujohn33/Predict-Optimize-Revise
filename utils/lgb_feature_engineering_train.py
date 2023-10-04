@@ -7,7 +7,7 @@ from utils.util_functions import reduce_mem_usage
 
 warnings.simplefilter('ignore')
 
-def init_train_data(path_to_bu):
+def init_train_data(path_to_bu, mode: str):
     print("Init train data")
     path_to_weather = "data/citylearn_challenge_2022_phase_1/weather.csv"
     df_bu, df_we = pd.read_csv(path_to_bu), pd.read_csv(path_to_weather)
@@ -50,9 +50,6 @@ def init_train_data(path_to_bu):
                      ]
     df = df[selected_cols]
 
-    df['Net'] = df['Equipment_Electric_Power'] - (df['Solar_Generation'] * 5)/1000
-
-
     df['Hour'] = df.Hour % 24
     df['day_year'] = df.index
     # add cyclical features
@@ -69,24 +66,35 @@ def init_train_data(path_to_bu):
 
     N = 24
     for i in range(N):
-        df['Outdoor_Drybulb_Temperature_{}'.format(i)] = df['Outdoor_Drybulb_Temperature'].shift(-i - 1)
-        df['Relative_Humidity_{}'.format(i)] = df['Relative_Humidity'].shift(-i - 1)
-        df['Diffuse_Solar_Radiation_{}'.format(i)] = df['Diffuse_Solar_Radiation'].shift(-i - 1)
-        df['Direct_Solar_Radiation_{}'.format(i)] = df['Direct_Solar_Radiation'].shift(-i - 1)
+        df['Outdoor_Drybulb_Temperature_{}'.format(i)] = df['Outdoor_Drybulb_Temperature'].shift(-i)
+        df['Relative_Humidity_{}'.format(i)] = df['Relative_Humidity'].shift(-i)
+        df['Diffuse_Solar_Radiation_{}'.format(i)] = df['Diffuse_Solar_Radiation'].shift(-i)
+        df['Direct_Solar_Radiation_{}'.format(i)] = df['Direct_Solar_Radiation'].shift(-i)
     for i in range(int(N * 1.25)):
-        # df['Solar_Past_{}'.format(i)] = df['Solar_Generation'].shift(i+1)
-        # df['Load_Past_{}'.format(i)] = df['Equipment_Electric_Power'].shift(i+1)
-        df['Net_Past_{}'.format(i)] = df['Net'].shift(i+1)
+        if mode == 'cons':
+            df['Load_Past_{}'.format(i)] = df['Equipment_Electric_Power'].shift(i+1)
+        elif mode == 'solar':
+            df['Solar_Past_{}'.format(i)] = df['Solar_Generation'].shift(i+1)
     for i in range(N):
-        df['Net_Future_{}'.format(i)] = df['Net'].shift(-i - 1)
+        if mode == 'cons':
+            df['Load_Future_{}'.format(i)] = df['Equipment_Electric_Power'].shift(-i)
+        elif mode == 'solar':
+            df['Solar_Future_{}'.format(i)] = df['Solar_Generation'].shift(-i)
     
     # drop 'Equipment_Electric_Power', 'Solar_Generation'
-    df.drop(columns=['Equipment_Electric_Power', 'Solar_Generation', 'Net'], inplace=True)
+    df.drop(columns=['Equipment_Electric_Power', 'Solar_Generation'], inplace=True)
     print('init df shape:', df.shape)
     df = reduce_mem_usage(df)
     # drop rows with nan values
     df_drop = df.dropna(inplace=False)
-    targets = [item for item in df_drop.columns if 'Net_Future_' in item]
+    #df_drop = df.copy()
+    if mode == 'cons':
+        targets = [item for item in df_drop.columns if 'Load_Future_' in item]
+    elif mode == 'solar':
+        targets = [item for item in df_drop.columns if 'Solar_Future_' in item]
+    else:
+        raise
+    
     x_train = df_drop.drop(targets, axis=1)
     y_train = df_drop[targets]
 
