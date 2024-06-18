@@ -12,25 +12,17 @@ def crps(y_true, y_pred):
     Returns:
         float: CRPS score.
     """
-    n_samples = y_true.shape[0]
-    n_forecasts = y_pred.shape[1]
+    # Ensure y_pred is a numpy array
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
 
-    # Compute the first term of the CRPS formula
-    crps_term1 = 0
-    for t in range(n_samples):
-        for i in range(n_forecasts):
-            crps_term1 += abs(y_pred[t, i] - y_true[t])
+    # Compute absolute differences between forecasts and true values
+    abs_diff_obs = np.abs(y_pred - y_true[:, None])
+    crps_term1 = np.mean(abs_diff_obs)
 
-    crps_term1 /= n_samples * n_forecasts
-
-    # Compute the second term of the CRPS formula
-    crps_term2 = 0
-    for t in range(n_samples):
-        for i in range(n_forecasts):
-            for j in range(n_forecasts):
-                crps_term2 += abs(y_pred[t, i] - y_pred[t, j])
-
-    crps_term2 /= 2 * n_samples * n_forecasts ** 2
+    # Compute absolute differences among all pairs of forecasts
+    abs_diff_members = np.abs(y_pred[:, :, None] - y_pred[:, None, :])
+    crps_term2 = np.mean(abs_diff_members) / 2
 
     # Compute the CRPS score
     crps_score = crps_term1 - crps_term2

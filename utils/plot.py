@@ -1,12 +1,14 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+import scienceplots
 
 
 def plot_run(
     filename,
     name="",
-    file_perfect="data/citylearn_challenge_2022_phase_1/milp_phase_1_log.csv",
+    file_perfect="data/citylearn_challenge_2022_phase_3/perfect_mpc_24_no_grid_cost.csv",
     only_common=False,
 ):
     ax_list = []
@@ -22,7 +24,7 @@ def plot_run(
     for i in range(num_buildings):
         df_run[f"perfect_load_{i}"] = df_perfect_run[f"final_load_{i}"]
 
-    df_run["prices"] = df_run["prices"] * 10
+    df_run["Electricity Price"] = df_run["prices"] * 10
     df_run["carbon_intensity"] = df_run["carbon_intensity"] * 30
     if not only_common:
         for i in range(num_buildings):
@@ -48,26 +50,54 @@ def plot_run(
     charge_cols = [f"charge_power_{i}" for i in range(num_buildings)]
     perfect_cols = [f"perfect_load_{i}" for i in range(num_buildings)]
 
-    df_run["tot_baseload"] = df_run[baseload_cols].sum(axis=1)
-    df_run["tot_final_load"] = df_run[final_load_cols].sum(axis=1)
+    df_run["Total Baseload"] = df_run[baseload_cols].sum(axis=1)
+    df_run["Final Load with batteries"] = df_run[final_load_cols].sum(axis=1)
     df_run["charge_power_total"] = df_run[charge_cols].sum(axis=1)
-    df_run["tot_perfect_load"] = df_run[perfect_cols].sum(axis=1)
+    df_run["Perfect Load with batteries"] = df_run[perfect_cols].sum(axis=1)
+    # slice by date on the date_range column
+    #df_run = df_run.loc[(df_run["date_range"] >= "2021-08-08") % (df_run["date_range"] <= "2021-08-15")]
 
+    # Set the style to 'seaborn-whitegrid' for a nice background grid
+    sns.set_style("whitegrid")
+
+    # Set the plot style to 'IEEE' if it's available
+    plt.style.use(['science'])
+    
     ax = df_run.plot(
         x="date_range",
         drawstyle="steps",
         y=[
-            "prices",
-            # "carbon_intensity",
-            "tot_baseload",
-            "tot_final_load",
-            "tot_perfect_load",
+            #"Electricity Price",
+            "Total Baseload",
+            "Final Load with batteries",
+            "Perfect Load with batteries",
         ],
-        title=f"Total loads {name}",
+        #title=f"Total loads {name}",
     )
-    ax.axhline(0, linestyle="--")
-    ax.set_ylim(-15, 25)
-    # ax.set_xlim(0, 8760)
+
+    # Make the zero line more visible
+    ax.axhline(0, color='black', linestyle="--")
+
+    # Set the limits of the y and x axes
+    ax.set_ylim(-10, 20)
+    ax.set_xlim(453792, 453960)
+
+    # Add labels to the x and y axes
+    ax.set_xlabel("Date Range")
+    ax.set_ylabel("Total Load [kWh]")
+
+    # set the size of the canvas/figure
+    cm = 1/2.54
+    plt.gcf().set_size_inches(18.1 * cm, 8.1 * cm)
+
+    # Shrink current axis's height by 10% on the top
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, 
+                    box.width, box.height * 0.8])
+
+    # Put a legend below current axis
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.4),
+            fancybox=True, shadow=True, ncol=2)
 
     df_run["obj_func"] = df_run["price_eval"].cumsum() / (
         2 * df_run["price_eval_no_batt"].cumsum()
@@ -415,17 +445,17 @@ def aggreg_scen(scenarios):
 
 
 if __name__ == "__main__":
-    # filename = "debug_logs/run_logs.csv"
-    # filename = "data/citylearn_challenge_2022_phase_1/milp_phase_1_log.csv"
-    # plot_run(filename, name="")
-    real_power_file = "debug_logs/real_power_point_and_variance_500_1.csv"
-    scenario_file = "debug_logs/scen_multi_stage_mpc_1.csv"
-    for time_step in range(72, 100, 2):
-        # time_step = 48
-        plot_scenarios(real_power_file, scenario_file, time_step, only_common=True)
+    filename = "debug_logs/run_logs_nogrid_cost_MPC_log.csv"
+    #filename = "data/citylearn_challenge_2022_phase_3/perfect_mpc_24_no_grid_cost.csv"
+    plot_run(filename, name="", only_common=True)
+    # real_power_file = "debug_logs/real_power_gurobi_phase_3_step_leap_1_forecast_step_1"
+    # scenario_file = "debug_logs/scen_gurobi_phase_3_step_leap_1_forecast_step_1.csv"
+    # for time_step in range(72, 100, 2):
+    #     # time_step = 48
+    #     plot_scenarios(real_power_file, scenario_file, time_step, only_common=True)
 
-    # mpc_log_file = "recurrent_quant_s10_p1_t200"
-    # file_perfect = "data/citylearn_challenge_2022_phase_1/milp_phase_1_log.csv"
-    # plot_mpc_decision(mpc_log_file, 155, file_perfect=file_perfect, only_common=True)
+    #mpc_log_file = "recurrent_quant_s10_p1_t200"
+    #file_perfect = "data/citylearn_challenge_2022_phase_1/milp_phase_1_log.csv"
+    #plot_mpc_decision(mpc_log_file, 155, file_perfect=file_perfect, only_common=True)
 
     plt.show()

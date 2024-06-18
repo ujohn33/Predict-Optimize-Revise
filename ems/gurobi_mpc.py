@@ -389,7 +389,7 @@ class GurobiMPC(Manager):
             == sum(
                 model_att.carb_obj[s]
                 + model_att.price_obj[s]
-                + model_att.grid_obj[s] / 2
+                 + model_att.grid_obj[s] / 2
                 for s in model_att.scen_id
             )
         )
@@ -563,6 +563,7 @@ class GurobiMPC(Manager):
                 cached_action = power_batteries[b][j] / batt_capacity[b]
                 self.steps_cache[j].append([cached_action])
 
+            # take an average of xw
             action = power_batteries[b][0] / batt_capacity[b]
             actions.append([action])
         actions = np.array(actions)
