@@ -67,7 +67,7 @@ def plot_run(
         x="date_range",
         drawstyle="steps",
         y=[
-            #"Electricity Price",
+            "Electricity Price",
             "Total Baseload",
             "Final Load with batteries",
             "Perfect Load with batteries",
@@ -445,8 +445,8 @@ def aggreg_scen(scenarios):
 
 
 if __name__ == "__main__":
-    filename = "debug_logs/run_logs_nogrid_cost_MPC_log.csv"
-    #filename = "data/citylearn_challenge_2022_phase_3/perfect_mpc_24_no_grid_cost.csv"
+    #filename = "debug_logs/run_logs_nogrid_cost_MPC_log.csv"
+    filename = "data/citylearn_challenge_2022_phase_3/perfect_mpc_24_no_grid_cost.csv"
     plot_run(filename, name="", only_common=True)
     # real_power_file = "debug_logs/real_power_gurobi_phase_3_step_leap_1_forecast_step_1"
     # scenario_file = "debug_logs/scen_gurobi_phase_3_step_leap_1_forecast_step_1.csv"
