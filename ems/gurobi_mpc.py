@@ -389,7 +389,7 @@ class GurobiMPC(Manager):
             == sum(
                 model_att.carb_obj[s]
                 + model_att.price_obj[s]
-                 + model_att.grid_obj[s] / 2
+                # + model_att.grid_obj[s] / 2
                 for s in model_att.scen_id
             )
         )

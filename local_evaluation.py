@@ -133,12 +133,12 @@ def evaluate(agent_used, total_steps=9000, phase_num=1):
         print("Average Grid Cost:", np.mean([e["grid_cost"] for e in episode_metrics]))
         total_cost = np.mean(
             [
-                e["price_cost"] + e["emmision_cost"] + e["grid_cost"]
+                e["price_cost"] + e["emmision_cost"] # + e["grid_cost"]
                 for e in episode_metrics
             ]
         )
-        print("Average Total Cost:", total_cost / 3)
-        tc = total_cost / 3
+        print("Average Total Cost:", total_cost / 2)
+        tc = total_cost / 2
         apc = np.mean([e["price_cost"] for e in episode_metrics])
         aec = np.mean([e["emmision_cost"] for e in episode_metrics])
         agc = np.mean([e["grid_cost"] for e in episode_metrics])

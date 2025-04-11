@@ -25,31 +25,39 @@ def hpc_evaluate(phase_num, n_scen, steps_skip, steps_skip_forecast):
             revision_forec_freq=steps_skip_forecast,
             n_buildings=n_buildings,
     )
-    manager = GurobiMPC(0, steps_skip=steps_skip)
+    log_exten = f"/data/brussel/vo/000/bvo00037/vsc10528/debug_logs/gurobi_phase_{phase_num}_step_leap_{steps_skip}_forecast_step_{steps_skip_forecast}.csv"
+    manager = GurobiMPC(0, steps_skip=steps_skip, file_name=log_exten)
+    #manager = GurobiMPC(0, steps_skip=steps_skip)
 
     agent_used = GeneralAgent(scenario_gen, manager)
     tc, apc, aec, agc, agent_time_elapsed = evaluate(agent_used, total_steps=total_steps, phase_num=phase_num)
-    file = open("scen_skipped_steps_res.csv", "a+")
+    file = open(f"opt_and_forecast_revision_study_12x12_nogridscore_phase{phase_num}.csv", "a+")
     
-    file.write(f"\n{phase_num},{n_scen},{steps_skip},{tc},{apc},{aec},{agc},{agent_time_elapsed}")
+    file.write(f"\n{phase_num},{steps_skip},{steps_skip_forecast},{tc},{apc},{aec},{agc},{agent_time_elapsed}")
     
     file.close()
 
 def hpc_single_argument(run_seed):
     run_seed = int(run_seed)
     
-    # steps_ahead = [1, 2, 4, 6, 9, 12, 16, 24]
-    steps_ahead = [1,2,3,4,5,6,7,8]
-    phases = [1, 2, 3]
-    num_scenarios = [102+(i) * 2 for i in range(50)]
-    total_runs = len(steps_ahead)*len(phases)*len(num_scenarios)
-    # Set three parameters from run_seed and the rest from the above lists
-    phase_num = phases[run_seed // (total_runs // len(phases))]
-    n_scen = num_scenarios[run_seed % len(num_scenarios)]
-    steps_skip_ind = (run_seed // len(num_scenarios)) % len(steps_ahead)
-    steps_skip = steps_ahead[steps_skip_ind]
-
-    hpc_evaluate(phase_num, n_scen, steps_skip)
-
+    n_scen = 75
+    steps = list(range(1, 13))  # Use same list for both skip parameters
+    phases = [3]
+    
+    # Total runs is now just phases × steps since we're only doing diagonal combinations
+    total_runs = len(phases) * len(steps)
+    
+    # Set parameters from run_seed
+    phase_num = phases[run_seed // len(steps)]
+    steps_value = steps[run_seed % len(steps)]
+    
+    # Set both step parameters to the same value
+    steps_skip = steps_value
+    steps_skip_forecast = steps_value
+    
+    print('CONFIGURATION: phase number, scenario number, skip optimizaiton steps, skip forecast steps')
+    print(phase_num, n_scen, steps_skip, steps_skip_forecast)
+    
+    hpc_evaluate(phase_num, n_scen, steps_skip, steps_skip_forecast)
 if __name__ == "__main__":
     hpc_single_argument(sys.argv[1])
