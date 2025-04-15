@@ -15,7 +15,7 @@ class ModelAttributes(object):
 
 
 class GurobiMPC(Manager):
-    def __init__(self, fixed_steps, weight_step="equal", steps_skip=1, file_name=None):
+    def __init__(self, fixed_steps, weight_step="equal", steps_skip=1, grid_include=True, file_name=None):
         super().__init__()
 
         self.fixed_steps = fixed_steps
@@ -23,6 +23,7 @@ class GurobiMPC(Manager):
         # Can be equal, cufe or favour_next
         self.weight_step = weight_step
         self.steps_skip = steps_skip
+        self.grid_include = grid_include
         self.steps_cache = [[] for _ in range(steps_skip)]
 
         self.model = gp.Model("citylearn+mpc")
@@ -384,15 +385,24 @@ class GurobiMPC(Manager):
         model = self.model
         model_att = self.model_att
 
-        model.addConstr(
-            model_att.obj_cost
-            == sum(
-                model_att.carb_obj[s]
-                + model_att.price_obj[s]
-                # + model_att.grid_obj[s] / 2
-                for s in model_att.scen_id
+        if self.grid_include:
+            model.addConstr(
+                model_att.obj_cost
+                == sum(
+                    model_att.carb_obj[s]
+                    + model_att.price_obj[s]
+                    + model_att.grid_obj[s] / 2
+                    for s in model_att.scen_id
+                )
             )
-        )
+        else:
+            model.addConstr(
+                model_att.obj_cost
+                == sum(
+                    model_att.carb_obj[s] + model_att.price_obj[s]
+                    for s in model_att.scen_id
+                )
+            )
 
     def model_remove_constr(self):
         for c in self.model.getConstrs():
@@ -563,21 +573,17 @@ class GurobiMPC(Manager):
                 cached_action = power_batteries[b][j] / batt_capacity[b]
                 self.steps_cache[j].append([cached_action])
 
-            # take an average of xw
             action = power_batteries[b][0] / batt_capacity[b]
             actions.append([action])
         actions = np.array(actions)
 
         if self.file_name is not None:
-            log_real_power(
-                time_step, self.file_name.replace("/", "/real_power_"), observation
-            )
             log_scenarios(
-                time_step, self.file_name.replace("/", "/scen_"), forec_scenarios
+                time_step, self.file_name.replace("$", "scen"), forec_scenarios
             )
-            log_fixed_powers(
-                time_step, self.file_name.replace("/", "/pow_"), power_batteries
-            )
+            # log_fixed_powers(
+            #     time_step, self.file_name.replace("$", "pow"), power_batteries
+            # )
         return actions
 
 
