@@ -37,6 +37,8 @@ This repository contains the implementation and experimental results for studyin
 The experiments studying the effect of different commitment strategies are run in:
 - `notebooks/optimization/deterministic_opt_scores.ipynb`: Runs optimization with varying commitment levels
 
+The same runs are repeated for stochastic optimization on HPC using slurm script `run_hpc.sbatch`
+
 #### Theoretical Analysis Illustrations
 
 The theoretical analysis from the paper is illustrated in:
@@ -131,7 +133,7 @@ The `results/` directory contains experimental results from the paper. The logs 
 - When running experiments, you can configure different parameters like `steps_skip` (control update frequency) and `steps_skip_forecast` (forecast update frequency)
 - The code supports multiple dataset phases (phase 1 and phase 3 are most commonly used)
 
-## References
+<!-- ## References
 
 If you use this code in your research, please cite:
 ```
@@ -140,5 +142,5 @@ If you use this code in your research, please cite:
   author={Author Names},
   journal={Journal Name},
   year={2023}
-}
+} -->
 ```
