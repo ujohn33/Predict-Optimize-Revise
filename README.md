@@ -37,14 +37,24 @@ This repository contains the implementation and experimental results for studyin
 The experiments studying the effect of different commitment strategies are run in:
 - `notebooks/optimization/deterministic_opt_scores.ipynb`: Runs optimization with varying commitment levels
 
-The same runs are repeated for stochastic optimization on HPC using slurm script `run_hpc.sbatch`
-
 #### Theoretical Analysis Illustrations
 
 The theoretical analysis from the paper is illustrated in:
 - `notebooks/analysis/demo_convergence.ipynb`: Visualizations supporting the convergence analysis
 
 ## Optimization Process
+
+### Relevant Imports
+
+The optimization experiments utilize the following key imports:
+
+```python
+from local_evaluation import evaluate
+from forecast.scenarios_lean import Scenario_Generator
+from forecast.file import ScenarioFile_sliding
+from ems.gurobi_mpc import GurobiMPC
+from agents.general_agent import GeneralAgent
+```
 
 ### Deterministic Optimization
 
@@ -143,4 +153,4 @@ If you use this code in your research, please cite:
   journal={Journal Name},
   year={2023}
 } -->
-```
+````
