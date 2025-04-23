@@ -42,6 +42,67 @@ The experiments studying the effect of different commitment strategies are run i
 The theoretical analysis from the paper is illustrated in:
 - `notebooks/analysis/demo_convergence.ipynb`: Visualizations supporting the convergence analysis
 
+## Optimization Process
+
+### Deterministic Optimization
+
+The deterministic optimization process follows these steps:
+
+1. Setup forecast data source:
+   ```python
+   file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
+   scenario_gen = ScenarioFile_sliding(file_name, n_scenarios=n_scen, steps_ahead=24, steps_skip=steps_skip_forecast)
+   ```
+
+2. Initialize the optimization manager with specified update frequency:
+   ```python
+   log_exten = f"debug_logs/gurobi_phase_{phase_num}_step_leap_{steps_skip}_forecast_step_{steps_skip_forecast}.csv"
+   manager = GurobiMPC(0, steps_skip=steps_skip, file_name=log_exten)
+   ```
+
+3. Create an agent and evaluate performance:
+   ```python
+   agent_used = GeneralAgent(scenario_gen, manager)
+   tc_temp, _, _, _, _ = evaluate(agent_used, total_steps=total_steps, phase_num=phase_num, grid_include=True)
+   ```
+
+### Stochastic Optimization
+
+The stochastic optimization uses a similar process but with different scenario generation:
+
+1. Setup stochastic forecast data source:
+   ```python
+   scenario_gen = Scenario_Generator(
+           forec_file=file_name,
+           type="norm_noise",
+           n_scenarios=n_scen,
+           steps_ahead=24,
+           revision_forec_freq=steps_skip_forecast,
+           n_buildings=n_buildings
+   )
+   ```
+
+2. Initialize the optimization manager:
+   ```python
+   manager = GurobiMPC(0, steps_skip=steps_skip, grid_include=grid_cost_bool, file_name=log_exten)
+   ```
+
+3. Create an agent and evaluate performance:
+   ```python
+   agent_used = GeneralAgent(scenario_gen, manager)
+   tc, apc, aec, agc, agent_time_elapsed = evaluate(agent_used, total_steps=total_steps, phase_num=phase_num, grid_include=grid_cost_bool)
+   ```
+
+## Key Parameters
+
+- **`steps_skip`**: Control frequency - how often optimization is recalculated (larger values mean less frequent recalculation)
+- **`steps_skip_forecast`**: Forecast update frequency - how often the forecast is updated (larger values mean less frequent updates)
+- **`n_scenarios`**: Number of scenarios used in stochastic optimization
+- **`steps_ahead`**: Prediction horizon (24 hours in most experiments)
+- **`phase_num`**: Dataset phase number (1 or 3)
+- **`total_steps`**: Total number of simulation steps (typically 9000)
+- **`grid_include`**: Whether to include grid costs in the optimization
+
 ## Usage
 
 ### Local Evaluation
@@ -77,6 +138,7 @@ If you use this code in your research, please cite:
 @article{your-citation-info,
   title={Balancing Forecast Accuracy and Switching Costs in Online Optimization of Energy Management Systems},
   author={Author Names},
+  journal={Journal Name},
   year={2023}
 }
 ```
