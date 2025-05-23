@@ -1,22 +1,11 @@
-import numpy as np
+from agents.rbc_agent import BasicRBCAgent
+import sys
+
+
+import numpy as np 
 import time
-from agents.general_agent import GeneralAgent
-from ems.logger_manager import LoggerManager
-from forecast.scenarios_lean import Scenario_Generator
-from forecast.file import PerfectFile, RealForecast, ScenarioFile, ScenarioFile_sliding
-from utils.logger import log_usefull
-from ems.gurobi_mpc import GurobiMPC
-
-"""
-Please do not make changes to this file. 
-This is only a reference script provided to allow you 
-to do local evaluation. The evaluator **DOES NOT** 
-use this script for orchestrating the evaluations. 
-"""
-
-from agents.orderenforcingwrapper import OrderEnforcingAgent
-from citylearn.citylearn import CityLearnEnv
-
+from agents.orderenforcingwrapper import OrderEnforcingAgent 
+from citylearn.citylearn import CityLearnEnv 
 
 def action_space_to_dict(aspace):
     """Only for box space"""
@@ -26,7 +15,6 @@ def action_space_to_dict(aspace):
         "shape": aspace.shape,
         "dtype": str(aspace.dtype),
     }
-
 
 def env_reset(env):
     observations = env.reset()
@@ -44,8 +32,7 @@ def env_reset(env):
     }
     return obs_dict
 
-
-def evaluate(agent_used, total_steps=9000, phase_num=1, grid_include=True):
+def evaluate_rbc(agent_used, total_steps=9000, phase_num=1, grid_include=True):
     print("Starting local evaluation")
 
     schema_path = f"./data/citylearn_challenge_2022_phase_{phase_num}/schema.json"
@@ -74,7 +61,6 @@ def evaluate(agent_used, total_steps=9000, phase_num=1, grid_include=True):
             if done or (num_steps + 1) == total_steps:
                 # Log run
                 filename = f"debug_logs/run_logs.csv"
-                log_usefull(env, filename)
 
                 episodes_completed += 1
                 metrics_t = env.evaluate()
@@ -148,71 +134,32 @@ def evaluate(agent_used, total_steps=9000, phase_num=1, grid_include=True):
     return tc, apc, aec, agc, agent_time_elapsed
 
 
-if __name__ == "__main__":
-    case_study = "together"
-    #case_study = "multi_stage_mpc"
-    #case_study = "comp_multi_stage_mpc"
-    phase_num = 3
+def hpc_evaluate(phase_num):
+    
+    phase_num = int(phase_num)
+    grid_cost_bool = True
+
     total_steps = 9000
-    n_scen = 1
-    steps_skip = 1
-    steps_skip_forecast = 1
     if phase_num == 3:
         n_buildings = 7
     else:
         n_buildings = 5
-    if case_study == "perfect_file_forec":
 
-        n_scen = 1
-        file_name = f"data/citylearn_challenge_2022_phase_3/perfect_forecast.csv"
-        scenario_gen = ScenarioFile_sliding(file_name, n_scenarios=n_scen, steps_ahead=24, steps_skip=steps_skip_forecast)
-        log_exten = f"debug_logs/perfect_mpc_logs.csv"
-        manager = GurobiMPC(0, steps_skip=steps_skip, file_name=log_exten, grid_include=False)
-    elif case_study == "logging":
-        type_forec = "tree_scenario"
-        param = f"{type_forec}_{total_steps}_{phase_num}"
-        scenario_gen = Scenario_Generator(
-            type=type_forec, n_scenarios=n_scen, steps_ahead=24, n_buildings=n_buildings
-        )
-        logger = LoggerManager(param)
-        manager = logger
-        scenario_gen.logger = logger
-    elif case_study == "read_scenarios_files":
-        file_name = f"debug_logs/scenarios_recurrent_quant_s10_p{phase_num}_24h.csv"
-        n_scen = 10
-        scenario_gen = ScenarioFile(file_name, n_scenarios=n_scen)
-        manager = PyoMPC(0)
-    elif case_study == "read_log_mpc":
-        method = "recurrent_quant"
-        file_name = f"debug_logs/scenarios_{method}_s{n_scen}_p{phase_num}_24h.csv"
+    agent_used = BasicRBCAgent()
+    tc, apc, aec, agc, agent_time_elapsed = evaluate_rbc(agent_used, total_steps=total_steps, phase_num=phase_num, grid_include=grid_cost_bool)
+    if grid_cost_bool:
+        print("Grid cost included")
+        file = open(f"opt_and_forecast_RBC_phase{phase_num}.csv", "a+")
+    else:
+        print("Grid cost NOT included")
+        file = open(f"opt_and_forecast_RBC_nogridscore_phase{phase_num}.csv", "a+")
+    
+    file.write(f"\n{phase_num},{tc},{apc},{aec},{agc},{agent_time_elapsed}")
+    
+    file.close()
 
-        scenario_gen = ScenarioFile(file_name, n_scenarios=n_scen)
-        mpc_log = f"debug_logs/mpc_{method}_s{n_scen}_p{phase_num}_t{total_steps}.csv"
-        manager = MPC(0, file_name=mpc_log)
-
-    elif case_study == "debug_pyo_mpc":
-        scenario_gen = PerfectFile()
-        manager = PyoMPC(0)
-    elif case_study == "together":
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        scenario_gen = ScenarioFile_sliding(file_name, n_scenarios=n_scen, steps_ahead=24, steps_skip=steps_skip_forecast)
-        log_exten = f"debug_logs/gurobi_step_leap_{steps_skip}_forecast_step_{steps_skip_forecast}.csv"
-        manager = GurobiMPC(0, steps_skip=steps_skip, file_name=log_exten)
-        #manager = MPC(0)
-    elif case_study == "together+naive":
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        scenario_gen = ScenarioFileAndNaive(file_name, n_scenarios=1)
-    elif case_study == "together_live":
-        file_name = f"data/together_forecast/phase_{phase_num}_forecast_sampled_1h.csv"
-        scenario_gen = Scenario_Generator(
-            forec_file=file_name,
-            type="norm_noise",
-            n_scenarios=n_scen,
-            steps_ahead=24,
-            revision_forec_freq=steps_skip_forecast,
-            n_buildings=n_buildings,
-        )
-        manager = GurobiMPC(0, steps_skip=steps_skip, grid_include=True)
-
-    agent_used = GeneralAgent(scenario_gen, manager)
-    evaluate(agent_used, total_steps=total_steps, phase_num=phase_num, grid_include=False)
+if __name__ == "__main__":
+    phase_num = 3
+    print('CONFIGURATION: phase number')
+    print(phase_num)
+    hpc_evaluate(phase_num)

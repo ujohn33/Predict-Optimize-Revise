@@ -17,7 +17,6 @@ def plot_run(
     df_perfect_run = pd.read_csv(file_perfect)
 
     date_range = pd.date_range(start="2021-07-01", end="2022-07-01", freq="H")
-
     date_range = date_range[: len(df_run["baseload_0"])]
     df_run["date_range"] = date_range
 
@@ -26,85 +25,110 @@ def plot_run(
 
     df_run["Electricity Price"] = df_run["prices"] * 10
     df_run["carbon_intensity"] = df_run["carbon_intensity"] * 30
-    if not only_common:
-        for i in range(num_buildings):
-            ax = df_run.plot(
-                x="date_range",
-                drawstyle="steps",
-                y=[
-                    # "prices",
-                    "carbon_intensity",
-                    f"baseload_{i}",
-                    f"final_load_{i}",
-                    f"perfect_load_{i}",
-                ],
-                title=f"Battery_{i} {name}",
-            )
-            ax.axhline(0, linestyle="--")
-            ax_list.append(ax)
-            # ax.set_ylim(-4, 8)
-            # ax.set_xlim(0, 140)
 
+    # Sum up different loads for total plots
     baseload_cols = [f"baseload_{i}" for i in range(num_buildings)]
     final_load_cols = [f"final_load_{i}" for i in range(num_buildings)]
     charge_cols = [f"charge_power_{i}" for i in range(num_buildings)]
     perfect_cols = [f"perfect_load_{i}" for i in range(num_buildings)]
+    df_run['date_range'] = pd.to_datetime(df_run['date_range'])
+    # slice by date on the date_range column for the first 24 hours
+    df_run = df_run.loc[df_run['date_range'] < '2021-07-10']
 
-    df_run["Total Baseload"] = df_run[baseload_cols].sum(axis=1)
-    df_run["Final Load with batteries"] = df_run[final_load_cols].sum(axis=1)
+    df_run["Aggregate Uncontrolled Load"] = df_run[baseload_cols].sum(axis=1)
+    df_run["Aggregate EMS-Controlled Net Load"] = df_run[final_load_cols].sum(axis=1)
     df_run["charge_power_total"] = df_run[charge_cols].sum(axis=1)
-    df_run["Perfect Load with batteries"] = df_run[perfect_cols].sum(axis=1)
-    # slice by date on the date_range column
-    #df_run = df_run.loc[(df_run["date_range"] >= "2021-08-08") % (df_run["date_range"] <= "2021-08-15")]
+    df_run["Optimal EMS Net Load (MPC with Perfect Forecast)"] = df_run[perfect_cols].sum(axis=1)
 
-    # Set the style to 'seaborn-whitegrid' for a nice background grid
+    # Set the style for plotting
     sns.set_style("whitegrid")
-
-    # Set the plot style to 'IEEE' if it's available
     plt.style.use(['science'])
-    
-    ax = df_run.plot(
+
+    # Define a color palette
+    colors = {
+        "Aggregate Uncontrolled Load": "#1f77b4",  # Blue
+        "Aggregate EMS-Controlled Net Load": "#2ca02c",  # Green
+        "Optimal EMS Net Load (MPC with Perfect Forecast)": "#ff7f0e",  # Orange
+        "Electricity Price": "#d62728",  # Dark Red
+        "Carbon Intensity": "#9467bd",  # Purple
+    }
+
+    # Create a figure with two subplots using gridspec_kw to control their relative sizes
+    fig, (ax_main, ax_price) = plt.subplots(
+        2, 1, sharex=True, gridspec_kw={'height_ratios': [4, 1]}, figsize=(10, 6)
+    )
+
+    # Main plot: Total loads
+    df_run.plot(
         x="date_range",
         drawstyle="steps",
         y=[
-            "Electricity Price",
-            "Total Baseload",
-            "Final Load with batteries",
-            "Perfect Load with batteries",
+            "Aggregate Uncontrolled Load",
+            "Optimal EMS Net Load (MPC with Perfect Forecast)",
+            "Aggregate EMS-Controlled Net Load",
         ],
-        #title=f"Total loads {name}",
+        ax=ax_main,
+        color=[colors["Aggregate Uncontrolled Load"], colors["Optimal EMS Net Load (MPC with Perfect Forecast)"], colors["Aggregate EMS-Controlled Net Load"]],
     )
+    ax_main.axhline(0, color='black', linestyle="--")
+    ax_main.set_ylabel("Total Load [kWh]")
 
-    # Make the zero line more visible
-    ax.axhline(0, color='black', linestyle="--")
+    # Bottom plot: Electricity Price
+    df_run.plot(
+        x="date_range",
+        y="Electricity Price",
+        drawstyle="steps",
+        ax=ax_price,
+        color=colors["Electricity Price"],
+        label="Electricity Price",
+    )
+    ax_price.set_ylabel("Electricity Price (\$/kWh)")
 
-    # Set the limits of the y and x axes
-    ax.set_ylim(-10, 20)
-    ax.set_xlim(453792, 453960)
+    # limit y-axis in the range [-7, 35]
+    ax_main.set_ylim([-7, 35])
 
-    # Add labels to the x and y axes
-    ax.set_xlabel("Date Range")
-    ax.set_ylabel("Total Load [kWh]")
+    # Twin y-axis for Carbon Intensity
+    ax_carbon = ax_price.twinx()
+    df_run.plot(
+        x="date_range",
+        y="carbon_intensity",
+        drawstyle="steps",
+        ax=ax_carbon,
+        color=colors["Carbon Intensity"],
+        linestyle="dashed",
+        label="Carbon Intensity",
+    )
+    ax_carbon.set_ylabel("Carbon Intensity (kgCO$_2$/kWh)")
 
-    # set the size of the canvas/figure
-    cm = 1/2.54
-    plt.gcf().set_size_inches(18.1 * cm, 8.1 * cm)
+    # Combine all legend handles
+    handles_main, labels_main = ax_main.get_legend_handles_labels()
+    handles_price, labels_price = ax_price.get_legend_handles_labels()
+    handles_carbon, labels_carbon = ax_carbon.get_legend_handles_labels()
 
-    # Shrink current axis's height by 10% on the top
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, 
-                    box.width, box.height * 0.8])
+    handles = handles_main + handles_price + handles_carbon
+    labels = labels_main + labels_price + labels_carbon
 
-    # Put a legend below current axis
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.4),
-            fancybox=True, shadow=True, ncol=2)
+    # Update legend labels
+    labels = [
+        "Aggregate Uncontrolled Load (Forecasted value)",
+        "Optimal EMS Net Load (MPC with Perfect Forecast)",
+        "Aggregate EMS-Controlled Net Load",
+        "Electricity Price",
+        "Carbon Intensity",
+    ]
 
-    df_run["obj_func"] = df_run["price_eval"].cumsum() / (
-        2 * df_run["price_eval_no_batt"].cumsum()
-    ) + df_run["co2_eval"].cumsum() / (2 * df_run["co2_eval_no_batt"].cumsum())
-    ax_list.append(ax)
+    # Add the common legend to the main plot
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 1.01), ncol=3)
 
-    return df_run, ax_list
+    # Remove individual legends
+    ax_main.legend().remove()
+    ax_price.legend().remove()
+    ax_carbon.legend().remove()
+
+    # Improve spacing
+    fig.tight_layout(rect=[0, 0, 1, 0.92])  # Adjust the rect parameter to leave space on top
+    
+    return df_run, [ax_main, ax_price, ax_carbon]
 
 
 def plot_scenarios(real_power_file, scenario_file, time_step, only_common=True):
@@ -442,6 +466,7 @@ def aggreg_scen(scenarios):
             for k, val in enumerate(scenario):
                 summed_list[j][k] += val
     return summed_list
+
 
 
 if __name__ == "__main__":
